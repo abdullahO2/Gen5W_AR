@@ -1,62 +1,23 @@
 import os
-import shutil
 from pathlib import Path
 
 BASE_DIR = Path(r"C:\Users\k\.gemini\antigravity\scratch\nemesis-arabic-package")
 
-# Remove obsolete directory if it exists
-old_pkg = BASE_DIR / "arabic.locale"
-if old_pkg.exists():
-    shutil.rmtree(old_pkg)
-    print(f"Removed legacy directory: {old_pkg}")
-
-# ==============================================================================
-# 1. ARABIC.UI (Safe Mode - Profile Language Only, Zero Region Conflicts)
-# ==============================================================================
 UI_DIR = BASE_DIR / "arabic.ui"
+FULL_DIR = BASE_DIR / "arabic.full"
+USB_PKG_DIR = BASE_DIR / "usb_package"
+USB_RECOVERY_DIR = BASE_DIR / "usb_emergency_recovery"
 
-nemesis_data_ui = """[nemesis]
-version=1.1
-id=arabic.ui
-name="Arabic UI Language"
-type=application
-package-version=1.2
-short-desc="Safe Arabic UI (Profile only, zero mod conflicts)"
-detailed-desc="Safe Mode: Adds Arabic to profile language settings without changing system region. 100% safe for CarPlay/AA & other regional mods. Includes auto stock backup, auto reboot, and USB unlooping."
-os=any
-models=any
-preinstall=scripts/pre.sh
-postinstall=scripts/post.sh
-preuninstall=scripts/preun.sh
+# Clean any stale build.prop from emergency recovery
+stale_bp = USB_RECOVERY_DIR / "build.prop"
+if stale_bp.exists():
+    stale_bp.unlink()
 
-[app.0]
-kind=sh
-path=bin/status.sh
-uid=root
-"""
-
-pre_sh_ui = """#!/system/bin/sh
-export PATH=/data/nemesis/bin:/sbin:/vendor/bin:/system/sbin:/system/bin:/system/xbin
-LOG="/data/nemesis/arabic.ui.log"
-
-log() {
-    echo "$1"
-    mkdir -p /data/nemesis 2>/dev/null || true
-    echo "$1" >> "$LOG" 2>/dev/null || true
-}
-
-log "=========================================================="
-log " DISCLAIMER / إخلاء مسؤولية "
-log " Installing Arabic UI Language (Safe Profile Mode). "
-log " This package modifies persist.sys.language_list only. "
-log " System region and navigation engine remain untouched. "
-log " Author holds no liability for device failure or damage. "
-log "=========================================================="
-exit 0
-"""
-
-common_sh_template = """#!/system/bin/sh
-# common.sh - Helper functions for Gen5W NEMESIS package
+# ==============================================================================
+# COMMON SCRIPT TEMPLATE (Universal, Bilingual, Detached Reboot)
+# ==============================================================================
+common_sh_content = """#!/system/bin/sh
+# common.sh - Universal helper library for Gen5W (Pure toolbox compatible)
 export PATH=/data/nemesis/bin:/sbin:/vendor/bin:/system/sbin:/system/bin:/system/xbin
 export LD_LIBRARY_PATH=/vendor/lib:/system/lib
 
@@ -104,13 +65,147 @@ sys_ro() {
 verify_prop_file() {
     local _f="$1"
     if [ ! -f "$_f" ] || [ ! -s "$_f" ]; then
-        log "FAIL: $_f does not exist or is empty"
+        log "[AR] خطأ: الملف غير موجود أو فارغ"
+        log "[EN] FAIL: $_f does not exist or is empty"
         return 1
     fi
     if ! grep "ro.build." "$_f" >/dev/null 2>&1; then
-        log "FAIL: $_f missing essential ro.build properties"
+        log "[AR] خطأ: الملف لا يحتوي على خصائص النظام الأساسية"
+        log "[EN] FAIL: $_f missing essential ro.build properties"
         return 1
     fi
+    return 0
+}
+
+find_usb_root() {
+    for _u in /storage/usb0 /storage/usb1 /storage/usb2 /mnt/media_rw/usb0 /mnt/media_rw/usb1 /mnt/media_rw/usb2 /storage/usbotg; do
+        if [ -d "$_u" ] && [ -w "$_u" ]; then
+            echo "$_u"
+            return 0
+        fi
+    done
+    for _u in /storage/usb* /mnt/media_rw/usb*; do
+        if [ -d "$_u" ] && [ -w "$_u" ]; then
+            echo "$_u"
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Universal per-car backup onto the connected USB drive and local storage
+backup_vehicle_oem() {
+    local _src="$BP"
+    if ! verify_prop_file "$_src"; then
+        log "[AR] خطأ: لا يمكن عمل نسخة احتياطية لملف تالف"
+        log "[EN] FAIL: Refusing to backup invalid $_src"
+        return 1
+    fi
+
+    mkdir -p "$BACKUP_DIR" 2>/dev/null || true
+
+    # 1. Permanent global internal backup (never overwritten if already valid)
+    if [ ! -s "$GLOBAL_BACKUP" ] || ! verify_prop_file "$GLOBAL_BACKUP"; then
+        cp -f "$_src" "$GLOBAL_BACKUP" 2>/dev/null || true
+        log "[AR] تم حفظ النسخة الاحتياطية الداخلية الدائمة"
+        log "[EN] Saved permanent global internal backup: $GLOBAL_BACKUP"
+    fi
+
+    # 2. Package-specific internal backup
+    if [ ! -s "$BACKUP_DIR/build.prop.stock" ]; then
+        cp -f "$_src" "$BACKUP_DIR/build.prop.stock" 2>/dev/null || true
+    fi
+    putline 1 > "$BACKUP_DIR/saved" 2>/dev/null || true
+
+    # 3. Dynamic USB Backup on the user's specific flash drive
+    local _usb
+    _usb="$(find_usb_root)"
+    if [ -n "$_usb" ] && [ -d "$_usb" ]; then
+        local _usb_dir="$_usb/OEM_BACKUP"
+        mkdir -p "$_usb_dir" 2>/dev/null || true
+        
+        # Standard filename for automatic recovery
+        cp -f "$_src" "$_usb_dir/build.prop.stock" 2>/dev/null || true
+        
+        # Vehicle-specific informative archive filename
+        local _model="$(getprop ro.product.model 2>/dev/null)"
+        [ -z "$_model" ] && _model="Gen5W"
+        local _sw="$(getprop ro.build.product2 2>/dev/null)"
+        [ -z "$_sw" ] && _sw="$(getprop ro.build.product 2>/dev/null)"
+        [ -z "$_sw" ] && _sw="SW_STOCK"
+
+        cp -f "$_src" "$_usb_dir/build.prop.${_model}_${_sw}" 2>/dev/null || true
+        sync
+        log "[AR] تم إنشاء نسخة المصنع الاحتياطية بنجاح على الفلاش:"
+        log "[EN] Successfully created USB OEM backup: $_usb_dir/build.prop.stock"
+    else
+        log "[AR] تنبيه: تعذر الكتابة على الفلاش، تم حفظ النسخة الاحتياطية في الذاكرة الداخلية."
+        log "[EN] NOTICE: USB mount not writable; internal stock backup saved safely."
+    fi
+    return 0
+}
+
+# Universal language list builder: preserves any car's native languages (KR, US, EU, etc.) and appends ar_EG
+get_universal_language_list() {
+    local _curr="$(getprop persist.sys.language_list 2>/dev/null)"
+    if [ -z "$_curr" ]; then
+        if [ -f "$BP" ]; then
+            _curr="$(grep '^persist.sys.language_list=' "$BP" 2>/dev/null | cut -d= -f2-)"
+        fi
+    fi
+    [ -z "$_curr" ] && _curr="ko_KR,en_US"
+
+    case "$_curr" in
+        *ar_EG*)
+            echo "$_curr"
+            ;;
+        *)
+            echo "${_curr},ar_EG"
+            ;;
+    esac
+}
+
+# Apply profile settings directly in user data partition (settings.db & persist)
+apply_profile_arabic() {
+    log "[AR] جاري تفعيل اللغة العربية في إعدادات البروفايل..."
+    log "[EN] Applying Arabic localization to Driver Profile..."
+    
+    # Update settings provider for Driver 1, Driver 2, and Guest
+    settings put system language_type_dr1 ar_EG 2>/dev/null || true
+    settings put system language_type_dr2 ar_EG 2>/dev/null || true
+    settings put system language_type ar_EG 2>/dev/null || true
+
+    # Append ar_EG to language list in /data/property/ (without touching /system/build.prop!)
+    local _langs="$(get_universal_language_list)"
+    setprop persist.sys.language_list "$_langs" 2>/dev/null || true
+
+    # Set current locale to Arabic
+    setprop persist.sys.language ar 2>/dev/null || true
+    setprop persist.sys.country EG 2>/dev/null || true
+
+    # Trigger locale change broadcast
+    settings put system settings.locale.change 1 2>/dev/null || true
+    am broadcast -a android.intent.action.LOCALE_CHANGED >/dev/null 2>&1 || true
+
+    log "[AR] تم تفعيل لغة البروفايل بنجاح"
+    log "[EN] Profile language set to ar_EG (language_list: $_langs)"
+    return 0
+}
+
+restore_profile_language() {
+    log "[AR] جاري استرجاع لغة البروفايل للوضع الافتراضي..."
+    log "[EN] Restoring Driver Profile language to default..."
+    settings put system language_type_dr1 en_US 2>/dev/null || true
+    settings put system language_type_dr2 Unknown 2>/dev/null || true
+    settings put system language_type Unknown 2>/dev/null || true
+
+    # Remove runtime persist overrides
+    rm -f /data/property/persist.sys.language_list 2>/dev/null || true
+    rm -f /data/property/persist.sys.language 2>/dev/null || true
+    rm -f /data/property/persist.sys.country 2>/dev/null || true
+
+    settings put system settings.locale.change 1 2>/dev/null || true
+    am broadcast -a android.intent.action.LOCALE_CHANGED >/dev/null 2>&1 || true
     return 0
 }
 
@@ -119,61 +214,21 @@ commit_tmp() {
     local _tmp="$2"
     
     if ! verify_prop_file "$_tmp"; then
-        log "FAIL: commit aborted, temp file failed validation"
+        log "[AR] فشل التحقق من صحة الملف المؤقت"
+        log "[EN] FAIL: commit aborted, temp file failed validation"
         rm -f "$_tmp" 2>/dev/null || true
         return 1
     fi
     
     cp -f "$_tmp" "$_dst" || {
-        log "FAIL: cp $_tmp to $_dst failed"
+        log "[AR] فشل نسخ الملف إلى مسار النظام"
+        log "[EN] FAIL: cp $_tmp to $_dst failed"
         return 1
     }
     
     chmod 644 "$_dst" 2>/dev/null || true
     chown 0.0 "$_dst" 2>/dev/null || chown 0:0 "$_dst" 2>/dev/null || true
     rm -f "$_tmp" 2>/dev/null || true
-    return 0
-}
-
-snapshot_all() {
-    # If a valid global stock backup already exists, preserve it permanently!
-    if [ -s "$GLOBAL_BACKUP" ] && verify_prop_file "$GLOBAL_BACKUP"; then
-        log "Original factory backup already verified at $GLOBAL_BACKUP (preserved)"
-        mkdir -p "$BACKUP_DIR" 2>/dev/null || true
-        if [ ! -s "$BACKUP_DIR/build.prop.stock" ]; then
-            cp -f "$GLOBAL_BACKUP" "$BACKUP_DIR/build.prop.stock" 2>/dev/null || true
-        fi
-        putline 1 > "$BACKUP_DIR/saved" 2>/dev/null || true
-        return 0
-    fi
-
-    if [ -s "$BACKUP_DIR/saved" ]; then
-        log "Stock backup already exists ($BACKUP_DIR) - keeping original intact"
-        return 0
-    fi
-    
-    if ! verify_prop_file "$BP"; then
-        log "FAIL: Refusing to snapshot invalid $BP"
-        return 1
-    fi
-    
-    mkdir -p "$BACKUP_DIR" || return 1
-    
-    # Save full build.prop to package backup dir
-    cp -f "$BP" "$BACKUP_DIR/build.prop.stock" || return 1
-    if ! verify_prop_file "$BACKUP_DIR/build.prop.stock"; then
-        log "FAIL: Snapshot build.prop.stock verification failed"
-        rm -rf "$BACKUP_DIR"
-        return 1
-    fi
-    
-    # Save permanent global stock copy
-    if [ ! -s "$GLOBAL_BACKUP" ]; then
-        cp -f "$BP" "$GLOBAL_BACKUP" 2>/dev/null || true
-    fi
-    
-    putline 1 > "$BACKUP_DIR/saved" || return 1
-    log "Successfully created stock backup in $BACKUP_DIR"
     return 0
 }
 
@@ -209,119 +264,165 @@ set_prop_line() {
     fi
     
     if [ "$_out" -lt "$_in" ]; then
-        log "FAIL: rewrite of $_file dropped lines ($_out < $_in)"
+        log "[AR] خطأ: سقطت أسطر أثناء تعديل الملف"
+        log "[EN] FAIL: rewrite of $_file dropped lines ($_out < $_in)"
         rm -f "$_tmp" 2>/dev/null || true
         return 1
     fi
     
     commit_tmp "$_file" "$_tmp" || return 1
-    log "Property set: ${_key}=${_val}"
+    log "[AR] تم ضبط الخاصية: ${_key}=${_val}"
+    log "[EN] Property set: ${_key}=${_val}"
     return 0
 }
 
-restore_all() {
-    local _stock="$BACKUP_DIR/build.prop.stock"
-    if [ ! -s "$_stock" ]; then
+restore_build_prop() {
+    local _stock=""
+    local _usb="$(find_usb_root)"
+
+    if [ -n "$_usb" ] && [ -s "$_usb/OEM_BACKUP/build.prop.stock" ] && verify_prop_file "$_usb/OEM_BACKUP/build.prop.stock"; then
+        _stock="$_usb/OEM_BACKUP/build.prop.stock"
+        log "[AR] تم العثور على نسخة المصنع في الفلاش:"
+        log "[EN] Found USB OEM backup: $_stock"
+    elif [ -s "$BACKUP_DIR/build.prop.stock" ] && verify_prop_file "$BACKUP_DIR/build.prop.stock"; then
+        _stock="$BACKUP_DIR/build.prop.stock"
+        log "[AR] تم العثور على نسخة المصنع في مجلد الحزمة:"
+        log "[EN] Found package backup: $_stock"
+    elif [ -s "$GLOBAL_BACKUP" ] && verify_prop_file "$GLOBAL_BACKUP"; then
         _stock="$GLOBAL_BACKUP"
+        log "[AR] تم العثور على نسخة المصنع الدائمة:"
+        log "[EN] Found global backup: $_stock"
     fi
-    
-    if ! verify_prop_file "$_stock"; then
-        log "FAIL: Cannot restore, valid stock backup not found"
+
+    if [ -z "$_stock" ]; then
+        log "[AR] خطأ: تعذر العثور على نسخة احتياطية صالحة لمصنع السيارة"
+        log "[EN] FAIL: Cannot restore build.prop, valid stock backup not found"
         return 1
     fi
-    
+
     if ! sys_rw; then
-        log "FAIL: remount /system rw failed during restore"
+        log "[AR] خطأ: تعذر فتح نظام الملفات للكتابة"
+        log "[EN] FAIL: remount /system rw failed during restore"
         return 1
     fi
-    
+
     cp -f "$_stock" "$BP" || {
         sys_ro
-        log "FAIL: Restoring stock build.prop failed"
+        log "[AR] خطأ: فشل استرجاع ملف build.prop الأصلي"
+        log "[EN] FAIL: Restoring stock build.prop failed"
         return 1
     }
-    
+
     chmod 644 "$BP" 2>/dev/null || true
     chown 0.0 "$BP" 2>/dev/null || chown 0:0 "$BP" 2>/dev/null || true
-    
-    # Clean runtime persist overrides
-    rm -f /data/property/persist.sys.language_list 2>/dev/null || true
-    
+
     sync
     sys_ro
-    log "Restored stock build.prop successfully"
+    log "[AR] تم استرجاع ملف build.prop الأصلي للوكالة بنجاح"
+    log "[EN] Restored stock build.prop successfully from $_stock"
     return 0
 }
 
-# Automatically rename NEMESIS.data on USB drives to prevent repeated prompts on boot
 rename_usb_data() {
     local _src="$1"
     local _dst="$2"
-    for _usb in /storage/usb* /mnt/media_rw/usb* /storage/usbotg*; do
-        if [ -d "$_usb" ] && [ -f "$_usb/$_src" ]; then
-            mv "$_usb/$_src" "$_usb/$_dst" 2>/dev/null && {
-                log "Renamed $_usb/$_src -> $_usb/$_dst"
+    for _u in /storage/usb* /mnt/media_rw/usb* /storage/usbotg*; do
+        if [ -d "$_u" ] && [ -f "$_u/$_src" ]; then
+            mv "$_u/$_src" "$_u/$_dst" 2>/dev/null && {
+                log "[AR] تم تغيير اسم ملف التهيئة على الفلاش:"
+                log "[EN] Renamed $_u/$_src -> $_u/$_dst"
                 sync
             }
         fi
     done
 }
 
+# Spawns detached reboot subshell so script exits 0 immediately.
+# This allows NEMESIS to cleanly delete package records from packages.db before restarting.
 reboot_system() {
-    log "Reboot triggered. Syncing disks and restarting..."
+    log "[AR] جاري جدولة إعادة التشغيل التلقائي خلال 4 ثوان..."
+    log "[EN] Reboot scheduled in 4 seconds (detached)..."
     sync
-    sleep 2
-    /system/bin/reboot 2>/dev/null || reboot 2>/dev/null || true
+    ( sleep 4; sync; /system/bin/reboot 2>/dev/null || reboot 2>/dev/null ) >/dev/null 2>&1 &
 }
 """
 
-common_sh_ui = common_sh_template.replace("{PKG_ID}", "arabic.ui")
+# ==============================================================================
+# 1. ARABIC.UI (Safe Profile Mode - Bilingual)
+# ==============================================================================
+nemesis_data_ui = """[nemesis]
+version=1.1
+id=arabic.ui
+name="Arabic Profile | تعريب البروفايل"
+type=application
+package-version=1.5
+short-desc="تعريب البروفايل الآمن (Safe Profile Mode)"
+detailed-desc="[AR] خيار آمن: تفعيل العربية بالبروفايل دون لمس ملفات النظام.\\n[EN] Safe Mode: Activates Arabic in Driver Profile without modifying system files. 100% safe for CarPlay/AA. Includes auto OEM backup & auto-reboot."
+os=any
+models=any
+preinstall=scripts/pre.sh
+postinstall=scripts/post.sh
+preuninstall=scripts/preun.sh
+
+[app.0]
+kind=sh
+path=bin/status.sh
+uid=root
+"""
+
+pre_sh_ui = """#!/system/bin/sh
+export PATH=/data/nemesis/bin:/sbin:/vendor/bin:/system/sbin:/system/bin:/system/xbin
+LOG="/data/nemesis/arabic.ui.log"
+
+log() {
+    echo "$1"
+    mkdir -p /data/nemesis 2>/dev/null || true
+    echo "$1" >> "$LOG" 2>/dev/null || true
+}
+
+log "=========================================================="
+log "[AR] تفعيل تعريب البروفايل (الوضع الآمن - عام لسيارات Gen5W)"
+log "[EN] Activating Arabic Profile UI (Safe Mode - Universal Gen5W)"
+log ""
+log "[AR] إخلاء مسؤولية: استخدامك للحزمة يتم على مسؤوليتك الشخصية."
+log "[EN] DISCLAIMER: Use at your own risk. Author holds no liability."
+log ""
+log "[AR] التعديل في بيانات المستخدم فقط، ولا يمس نظام /system أو ملف build.prop."
+log "[EN] Modifies user profile data only. ZERO /system or build.prop changes."
+log "=========================================================="
+exit 0
+"""
 
 post_sh_ui = """#!/system/bin/sh
 export PATH=/data/nemesis/bin:/sbin:/vendor/bin:/system/sbin:/system/bin:/system/xbin
 . ./scripts/common.sh
 
-log "=== Installing arabic.ui (Safe Profile Mode) ==="
+log "=== [AR] بدء تثبيت تعريب البروفايل ==="
+log "=== [EN] Installing arabic.ui ==="
 
-# 1. Safety snapshot of OEM build.prop
-if ! snapshot_all; then
-    log "ABORT: Snapshot creation failed, system untouched"
-    toast "Arabic Mod: Backup failed! Aborted."
+# 1. Universal OEM backup to USB & local storage
+backup_vehicle_oem
+
+# 2. Apply Arabic settings to Driver Profile and persist properties (No /system write!)
+if ! apply_profile_arabic; then
+    log "[AR] خطأ: فشل تفعيل لغة البروفايل"
+    log "[EN] ERROR: apply_profile_arabic failed."
+    restore_profile_language
+    toast "خطأ في التفعيل! تم الإلغاء
+Error! Installation Aborted"
     exit 1
 fi
 
-# 2. Remount system partition rw
-if ! sys_rw; then
-    log "ABORT: Cannot remount /system rw"
-    toast "Arabic Mod: Cannot remount system rw."
-    exit 1
-fi
-
-# 3. Apply ONLY UI language list (leaves system region and timezone completely untouched)
-_fail=0
-set_prop_line "$BP" persist.sys.language_list "ko_KR,en_US,ar_EG" || _fail=1
-
-if [ "$_fail" -ne 0 ]; then
-    log "ERROR occurred during property update. Rolling back..."
-    restore_all
-    sys_ro
-    toast "Arabic Mod: Failed! Rolled back to stock."
-    exit 1
-fi
-
-# 4. Set runtime persist property
-setprop persist.sys.language_list "ko_KR,en_US,ar_EG" 2>/dev/null || true
-
-# 5. Lock filesystem and sync
-sys_ro
 sync
-log "=== Arabic UI installation completed successfully ==="
+log "=== [AR] اكتمل التفعيل بنجاح (دون لمس ملفات النظام) ==="
+log "=== [EN] Completed successfully (Zero /system changes) ==="
 
-# 6. Rename USB installer descriptor to prevent re-install prompts on future boots
+# 3. Rename USB installer descriptor to prevent re-install prompts on future boots
 rename_usb_data "NEMESIS.data" "NEMESIS.data.installed"
 
-# 7. Notify user on screen and reboot automatically
-toast "Arabic UI: Installed! Rebooting in 3 seconds..."
+# 4. Notify user on screen with bilingual toast and trigger detached reboot
+toast "تم تفعيل التعريب! جاري إعادة التشغيل...
+Arabic Activated! Rebooting in 4s..."
 reboot_system
 exit 0
 """
@@ -330,53 +431,73 @@ preun_sh_ui = """#!/system/bin/sh
 export PATH=/data/nemesis/bin:/sbin:/vendor/bin:/system/sbin:/system/bin:/system/xbin
 . ./scripts/common.sh
 
-log "=== Uninstalling arabic.ui package ==="
+log "=== [AR] بدء إزالة حزمة التعريب ==="
+log "=== [EN] Uninstalling arabic.ui ==="
 
-if ! restore_all; then
-    log "ABORT: Restore failed. Keeping backup for safety."
-    toast "Arabic Mod: Restore failed! Check log."
-    exit 1
-fi
-
+restore_profile_language
 rm -rf "$BACKUP_DIR" 2>/dev/null || true
 sync
 
 # Re-enable installer on USB if USB is still plugged in
 rename_usb_data "NEMESIS.data.installed" "NEMESIS.data"
 
-log "=== arabic.ui uninstalled successfully ==="
-toast "Arabic UI: Restored to stock OEM! Rebooting in 3 seconds..."
+log "=== [AR] تمت الإزالة واسترجاع الإعدادات بنجاح ==="
+log "=== [EN] arabic.ui uninstalled successfully ==="
+toast "تمت الإزالة والعودة للوضع الافتراضي
+Restored to default! Rebooting..."
+
+# Spawns detached reboot subshell and exits 0 immediately so NEMESIS removes package cleanly
 reboot_system
 exit 0
 """
 
 status_sh_ui = """#!/system/bin/sh
 export PATH=/data/nemesis/bin:/sbin:/vendor/bin:/system/sbin:/system/bin:/system/xbin
-echo "======================================"
-echo "    NEMESIS Arabic UI Status          "
-echo "======================================"
-echo "Package:          arabic.ui (Safe Mode)"
-echo "Language List:    $(getprop persist.sys.language_list)"
-echo "Current Language: $(getprop persist.sys.language)"
-echo "Current Country:  $(getprop persist.sys.country)"
-echo "System Region:    $(getprop ro.product.locale.region)"
-echo "======================================"
+ACTIVE="$(settings get system user_profile_driver 2>/dev/null)"
+D1="$(settings get system language_type_dr1 2>/dev/null)"
+D2="$(settings get system language_type_dr2 2>/dev/null)"
+GUEST="$(settings get system language_type 2>/dev/null)"
+LANGS="$(getprop persist.sys.language_list)"
+LOCALE="$(getprop persist.sys.language)_$(getprop persist.sys.country)"
+REGION="$(getprop ro.product.locale.region)"
+
+echo "=========================================================="
+echo " [AR] تقرير حالة تعريب البروفايل"
+echo " [EN] NEMESIS Arabic Profile Status Report"
+echo "=========================================================="
+echo " [AR] نوع الحزمة:"
+echo " [EN] Package:                   arabic.ui (Safe Profile Mode)"
+echo " [AR] السائق النشط حالياً:"
+echo " [EN] Active Driver:             $ACTIVE"
+echo " [AR] لغة السائق الأول:"
+echo " [EN] Driver 1 Language:         $D1"
+echo " [AR] لغة السائق الثاني:"
+echo " [EN] Driver 2 Language:         $D2"
+echo " [AR] لغة الضيف الافتراضية:"
+echo " [EN] Guest Language:            $GUEST"
+echo " [AR] قائمة اللغات المتاحة:"
+echo " [EN] Language List:             $LANGS"
+echo " [AR] لغة الواجهة الحالية:"
+echo " [EN] Current Locale:            $LOCALE"
+echo " [AR] منطقة النظام:"
+echo " [EN] System Region:             $REGION (OEM intact / لم تتغير)"
+echo " [AR] وضع ملفات النظام:"
+echo " [EN] System Files Status:       Read-Only intact (آمن 100%)"
+echo "=========================================================="
 exit 0
 """
 
 # ==============================================================================
-# 2. ARABIC.FULL (Full Mode - Arabic UI + Middle East Region for Native Maps)
+# 2. ARABIC.FULL (Middle East Map Compatibility Mod - Bilingual)
 # ==============================================================================
-FULL_DIR = BASE_DIR / "arabic.full"
-
 nemesis_data_full = """[nemesis]
 version=1.1
 id=arabic.full
-name="Arabic & ME Region (Full)"
+name="ME Map & Arabic | توافق خرائط الشرق الأوسط"
 type=application
-package-version=1.2
-short-desc="Arabic UI + Middle East Region for Native Maps"
-detailed-desc="Full Mode: Adds Arabic UI and sets ME region (ro.product.locale.region=ME) for offline native maps. NOTE: May conflict with Korean-market mods (Wireless CarPlay/AA). Includes auto backup, auto reboot, and USB unlooping."
+package-version=1.5
+short-desc="توافق خرائط الشرق الأوسط (ME Map Mod)"
+detailed-desc="[AR] تهيئة النظام لقبول خرائط الشرق الأوسط (لا تشمل الخرائط).\\n[EN] Full Mode: Enables ME native map compatibility (does not include map files). Sets region to ME. Creates per-vehicle USB backup & auto-reboot."
 os=any
 models=any
 preinstall=scripts/pre.sh
@@ -400,67 +521,85 @@ log() {
 }
 
 log "=========================================================="
-log " DISCLAIMER / إخلاء مسؤولية "
-log " Installing Arabic & Middle East Region (Full Mod). "
-log " NOTICE: Modifies system region to ME for native map engine. "
-log " May deactivate Korean-market specific features/mods. "
-log " Author holds no liability for device failure or damage. "
+log "[AR] تهيئة النظام لتشغيل خرائط الشرق الأوسط الأصلية"
+log "[EN] Enabling Middle East Native Map Engine Compatibility"
+log ""
+log "[AR] تنبيه هام: الحزمة لا تحتوي على ملفات الخرائط، بل تهيئ النظام لقبولها."
+log "[EN] IMPORTANT: This package does NOT include map files; it enables system map support."
+log ""
+log "[AR] إخلاء مسؤولية: هذا التعديل يتم على مسؤوليتك الشخصية بالكامل."
+log "[EN] DISCLAIMER: Use at your own risk. Author holds no liability."
+log ""
+log "[AR] تنبيه: تعديل منطقة النظام إلى ME قد يعطل بعض التعديلات الكورية."
+log "[EN] NOTICE: Changing system region to ME may deactivate Korean mods."
+log ""
+log "[AR] يتم حفظ نسخة المصنع لسيارتك تلقائياً على الفلاش ميموري."
+log "[EN] Automatic per-vehicle OEM backup created on USB drive."
 log "=========================================================="
 exit 0
 """
-
-common_sh_full = common_sh_template.replace("{PKG_ID}", "arabic.full")
 
 post_sh_full = """#!/system/bin/sh
 export PATH=/data/nemesis/bin:/sbin:/vendor/bin:/system/sbin:/system/bin:/system/xbin
 . ./scripts/common.sh
 
-log "=== Installing arabic.full (Full Region Mod) ==="
+log "=== [AR] بدء تثبيت تهيئة خرائط الشرق الأوسط والتعريب ==="
+log "=== [EN] Installing arabic.full (ME Map Compatibility) ==="
 
-# 1. Safety snapshot of OEM build.prop
-if ! snapshot_all; then
-    log "ABORT: Snapshot creation failed, system untouched"
-    toast "Arabic Mod: Backup failed! Aborted."
+# 1. Dynamic OEM backup to USB (OEM_BACKUP folder) and internal storage
+if ! backup_vehicle_oem; then
+    log "[AR] خطأ: فشل النسخ الاحتياطي! تم إلغاء العملية."
+    log "[EN] ABORT: Per-vehicle OEM backup failed! System untouched."
+    toast "فشل النسخ الاحتياطي! تم الإلغاء
+Backup Failed! Aborted"
     exit 1
 fi
 
 # 2. Remount system partition rw
 if ! sys_rw; then
-    log "ABORT: Cannot remount /system rw"
-    toast "Arabic Mod: Cannot remount system rw."
+    log "[AR] خطأ: تعذر فتح نظام الملفات للكتابة"
+    log "[EN] ABORT: Cannot remount /system rw"
+    toast "فشل فتح نظام الملفات!
+Cannot remount /system rw"
     exit 1
 fi
 
-# 3. Apply properties (Language list + Middle East Region)
+# 3. Apply properties to build.prop
 _fail=0
 
 # A) Set Middle East region for Native Navigation Engine (BuildInfo.REGION = 6)
 set_prop_line "$BP" ro.product.locale.region ME || _fail=1
 
-# B) Unlock Arabic (ar_EG) in Settings -> Language list
-set_prop_line "$BP" persist.sys.language_list "ko_KR,en_US,ar_EG" || _fail=1
+# B) Universal language list: preserves vehicle native languages + adds ar_EG
+_langs="$(get_universal_language_list)"
+set_prop_line "$BP" persist.sys.language_list "$_langs" || _fail=1
 
 if [ "$_fail" -ne 0 ]; then
-    log "ERROR occurred during property updates. Rolling back..."
-    restore_all
+    log "[AR] خطأ أثناء تعديل الخصائص. جاري استرجاع نسخة المصنع..."
+    log "[EN] ERROR occurred during build.prop updates. Rolling back..."
+    restore_build_prop
     sys_ro
-    toast "Arabic Mod: Failed! Rolled back to stock."
+    toast "خطأ في التثبيت! تم استرجاع الوكالة
+Error! Restored OEM"
     exit 1
 fi
 
-# 4. Set runtime persist property
-setprop persist.sys.language_list "ko_KR,en_US,ar_EG" 2>/dev/null || true
-
-# 5. Lock filesystem and sync
+# 4. Lock system filesystem
 sys_ro
 sync
-log "=== Arabic Full installation completed successfully ==="
+
+# 5. Apply Driver Profile settings
+apply_profile_arabic
+
+log "=== [AR] اكتمل التثبيت والتهيئة بنجاح ==="
+log "=== [EN] Full installation completed successfully ==="
 
 # 6. Rename USB installer descriptor to prevent re-install prompts on future boots
 rename_usb_data "NEMESIS.data" "NEMESIS.data.installed"
 
-# 7. Notify user on screen and reboot automatically
-toast "Arabic Full: Installed! Rebooting in 3 seconds..."
+# 7. Notify user on screen and trigger detached reboot
+toast "تم تفعيل توافق خرائط الشرق الأوسط!
+ME Map Compatibility Enabled! Rebooting..."
 reboot_system
 exit 0
 """
@@ -469,11 +608,18 @@ preun_sh_full = """#!/system/bin/sh
 export PATH=/data/nemesis/bin:/sbin:/vendor/bin:/system/sbin:/system/bin:/system/xbin
 . ./scripts/common.sh
 
-log "=== Uninstalling arabic.full package ==="
+log "=== [AR] بدء إزالة تهيئة خرائط الشرق الأوسط والتعريب ==="
+log "=== [EN] Uninstalling arabic.full ==="
 
-if ! restore_all; then
-    log "ABORT: Restore failed. Keeping backup for safety."
-    toast "Arabic Mod: Restore failed! Check log."
+_err=0
+restore_build_prop || _err=1
+restore_profile_language || _err=1
+
+if [ "$_err" -ne 0 ]; then
+    log "[AR] فشل الاسترجاع الكامل! تم الاحتفاظ بالنسخ الاحتياطية للأمان."
+    log "[EN] ABORT: Restore failed. Keeping backup for safety."
+    toast "فشل الاسترجاع! راجع السجل
+Restore failed! Check log"
     exit 1
 fi
 
@@ -483,50 +629,237 @@ sync
 # Re-enable installer on USB if USB is still plugged in
 rename_usb_data "NEMESIS.data.installed" "NEMESIS.data"
 
-log "=== arabic.full uninstalled successfully ==="
-toast "Arabic Full: Restored to stock OEM! Rebooting in 3 seconds..."
+log "=== [AR] تم استرجاع نسخة المصنع وإزالة الحزمة بنجاح ==="
+log "=== [EN] arabic.full uninstalled successfully ==="
+toast "تم استرجاع وضع المصنع الافتراضي!
+OEM Restored! Rebooting..."
+
+# Spawns detached reboot subshell and exits 0 immediately so NEMESIS removes package cleanly
 reboot_system
 exit 0
 """
 
 status_sh_full = """#!/system/bin/sh
 export PATH=/data/nemesis/bin:/sbin:/vendor/bin:/system/sbin:/system/bin:/system/xbin
-echo "======================================"
-echo "    NEMESIS Arabic Full Status        "
-echo "======================================"
-echo "Package:          arabic.full (Full Region Mod)"
-echo "Language List:    $(getprop persist.sys.language_list)"
-echo "Current Language: $(getprop persist.sys.language)"
-echo "Current Country:  $(getprop persist.sys.country)"
-echo "System Region:    $(getprop ro.product.locale.region) (Expected: ME)"
-echo "======================================"
+ACTIVE="$(settings get system user_profile_driver 2>/dev/null)"
+D1="$(settings get system language_type_dr1 2>/dev/null)"
+LANGS="$(getprop persist.sys.language_list)"
+LOCALE="$(getprop persist.sys.language)_$(getprop persist.sys.country)"
+REGION="$(getprop ro.product.locale.region)"
+
+echo "=========================================================="
+echo " [AR] تقرير حالة التوافق مع خرائط الشرق الأوسط"
+echo " [EN] NEMESIS Middle East Map Compatibility Status"
+echo "=========================================================="
+echo " [AR] نوع الحزمة:"
+echo " [EN] Package:                   arabic.full (ME Map Compatibility Mod)"
+echo " [AR] السائق النشط حالياً:"
+echo " [EN] Active Driver:             $ACTIVE"
+echo " [AR] لغة السائق الأول:"
+echo " [EN] Driver 1 Language:         $D1"
+echo " [AR] قائمة اللغات المتاحة:"
+echo " [EN] Language List:             $LANGS"
+echo " [AR] اللغة الحالية:"
+echo " [EN] Current Locale:            $LOCALE"
+echo " [AR] منطقة النظام المعدلة:"
+echo " [EN] System Region:             $REGION (Expected: ME)"
+echo " [AR] جاهزية محرك خرائط الشرق الأوسط:"
+echo " [EN] ME Map Engine Support:     Enabled (مهيأ لتشغيل خرائط ME)"
+echo " [AR] تنبيه: ملفات الخرائط يلزم توفيرها من الوكالة/بطاقة SD"
+echo " [EN] Notice: Map data files must be provided via SD card"
+echo "=========================================================="
 exit 0
 """
 
 # ==============================================================================
-# Write Files with LF Line Endings
+# 3. UNIVERSAL EMERGENCY RECOVERY SCRIPT (Bilingual & Per-Car Discovery)
 # ==============================================================================
-all_files = {
+emergency_data = """[nemesis]
+version=1.0
+type=execute
+path=NEMESIS.sh
+"""
+
+emergency_sh = """#!/system/bin/sh
+# Universal Failsafe Emergency Recovery Script for Gen5W (Pure toolbox compatible)
+# Dynamically searches for that vehicle's own backup on USB or internal storage
+export PATH=/data/nemesis/bin:/sbin:/vendor/bin:/system/sbin:/system/bin:/system/xbin
+export LD_LIBRARY_PATH=/vendor/lib:/system/lib
+
+BP=/system/build.prop
+GLOBAL_STOCK=/data/nemesis/build.prop.stock
+LOG=./emergency-recover.log
+
+log() {
+    echo "$1"
+    mkdir -p /data/nemesis 2>/dev/null || true
+    echo "$1" >> "$LOG" 2>/dev/null || true
+}
+
+toast() {
+    local _msg="$1"
+    am broadcast -a com.hkmc.intent.action.TOAST \\
+        -e com.hkmc.intent.extra.TOAST_MESSAGE "$_msg" \\
+        --ez com.hkmc.intent.extra.TOAST_POPUPSHOWING true >/dev/null 2>&1 || true
+}
+
+sys_rw() {
+    /system/xbin/nemesis remount rw >/dev/null 2>&1 && return 0
+    mount -o remount,rw /system 2>/dev/null && return 0
+    mount -o rw,remount /system 2>/dev/null && return 0
+    return 1
+}
+
+sys_ro() {
+    /system/xbin/nemesis remount ro >/dev/null 2>&1 || true
+    mount -o remount,ro /system 2>/dev/null || true
+}
+
+verify_prop_file() {
+    local _f="$1"
+    if [ ! -f "$_f" ] || [ ! -s "$_f" ]; then
+        return 1
+    fi
+    if ! grep "ro.build." "$_f" >/dev/null 2>&1; then
+        return 1
+    fi
+    return 0
+}
+
+find_backup_source() {
+    # 1. Check relative OEM_BACKUP on current USB drive
+    if [ -s "./OEM_BACKUP/build.prop.stock" ] && verify_prop_file "./OEM_BACKUP/build.prop.stock"; then
+        echo "./OEM_BACKUP/build.prop.stock"
+        return 0
+    fi
+    if [ -s "./build.prop" ] && verify_prop_file "./build.prop"; then
+        echo "./build.prop"
+        return 0
+    fi
+
+    # 2. Check all mounted USB locations for this vehicle's OEM_BACKUP
+    for _u in /storage/usb0 /storage/usb1 /storage/usb2 /mnt/media_rw/usb* /storage/usbotg*; do
+        if [ -s "$_u/OEM_BACKUP/build.prop.stock" ] && verify_prop_file "$_u/OEM_BACKUP/build.prop.stock"; then
+            echo "$_u/OEM_BACKUP/build.prop.stock"
+            return 0
+        fi
+        if [ -s "$_u/build.prop" ] && verify_prop_file "$_u/build.prop"; then
+            echo "$_u/build.prop"
+            return 0
+        fi
+    done
+
+    # 3. Check internal global stock backup on the car
+    if [ -s "$GLOBAL_STOCK" ] && verify_prop_file "$GLOBAL_STOCK"; then
+        echo "$GLOBAL_STOCK"
+        return 0
+    fi
+
+    # 4. Check internal package backup on the car
+    for _p in /data/nemesis/backup/*/build.prop.stock; do
+        if [ -s "$_p" ] && verify_prop_file "$_p"; then
+            echo "$_p"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+log "=========================================================="
+log "[AR] بدء تشغيل الاسترجاع التلقائي للطوارئ"
+log "[EN] Universal Emergency OEM Restore Triggered"
+log "=========================================================="
+toast "طوارئ: جاري استرجاع نسخة المصنع...
+Emergency: Restoring OEM Backup..."
+
+SOURCE="$(find_backup_source)"
+
+if [ -z "$SOURCE" ] || ! verify_prop_file "$SOURCE"; then
+    log "[AR] خطأ حرج: لم يتم العثور على نسخة احتياطية صالحة لهذا الجهاز!"
+    log "[EN] CRITICAL: No valid OEM backup file found for this vehicle on USB or internal storage!"
+    toast "خطأ: لم يتم العثور على نسخة احتياطية!
+Error: No OEM Backup Found!"
+    exit 1
+fi
+
+log "[AR] تم تحديد مسار نسخة المصنع:"
+log "[EN] Identified valid OEM vehicle backup: $SOURCE"
+
+if ! sys_rw; then
+    log "[AR] خطأ: تعذر فتح نظام الملفات للكتابة"
+    log "[EN] FAIL: cannot remount /system rw"
+    toast "خطأ: تعذر فتح النظام!
+Cannot remount /system rw"
+    exit 1
+fi
+
+cp -f "$SOURCE" "$BP" || {
+    sys_ro
+    log "[AR] خطأ: فشل نسخ الملف إلى مسار النظام"
+    log "[EN] FAIL: cp failed"
+    toast "خطأ: فشل نسخ الملف!
+File copy failed!"
+    exit 1
+}
+
+chmod 644 "$BP" 2>/dev/null || true
+chown 0.0 "$BP" 2>/dev/null || chown 0:0 "$BP" 2>/dev/null || true
+
+# Clear persist locale and timezone overrides
+rm -f /data/property/persist.sys.language_list 2>/dev/null || true
+rm -f /data/property/persist.sys.language 2>/dev/null || true
+rm -f /data/property/persist.sys.country 2>/dev/null || true
+rm -f /data/property/persist.sys.timezone 2>/dev/null || true
+
+# Restore profile language defaults
+settings put system language_type_dr1 en_US 2>/dev/null || true
+settings put system language_type_dr2 Unknown 2>/dev/null || true
+settings put system language_type Unknown 2>/dev/null || true
+
+sys_ro
+sync
+log "=========================================================="
+log "[AR] اكتمل استرجاع نسخة المصنع بنجاح. جاري إعادة التشغيل..."
+log "[EN] OEM RESTORE COMPLETED SUCCESSFULLY. REBOOTING..."
+log "=========================================================="
+toast "تم استرجاع الوكالة بنجاح! جاري الإقلاع
+OEM Restored! Rebooting in 3s..."
+
+sleep 3
+/system/bin/reboot 2>/dev/null || reboot 2>/dev/null || true
+exit 0
+"""
+
+# ==============================================================================
+# Write all files with LF line endings
+# ==============================================================================
+files = {
     # UI package
     UI_DIR / "NEMESIS.data": nemesis_data_ui,
     UI_DIR / "scripts" / "pre.sh": pre_sh_ui,
-    UI_DIR / "scripts" / "common.sh": common_sh_ui,
+    UI_DIR / "scripts" / "common.sh": common_sh_content.replace("{PKG_ID}", "arabic.ui"),
     UI_DIR / "scripts" / "post.sh": post_sh_ui,
     UI_DIR / "scripts" / "preun.sh": preun_sh_ui,
     UI_DIR / "bin" / "status.sh": status_sh_ui,
     # Full package
     FULL_DIR / "NEMESIS.data": nemesis_data_full,
     FULL_DIR / "scripts" / "pre.sh": pre_sh_full,
-    FULL_DIR / "scripts" / "common.sh": common_sh_full,
+    FULL_DIR / "scripts" / "common.sh": common_sh_content.replace("{PKG_ID}", "arabic.full"),
     FULL_DIR / "scripts" / "post.sh": post_sh_full,
     FULL_DIR / "scripts" / "preun.sh": preun_sh_full,
     FULL_DIR / "bin" / "status.sh": status_sh_full,
+    # Emergency recovery
+    USB_RECOVERY_DIR / "NEMESIS.data": emergency_data,
+    USB_RECOVERY_DIR / "NEMESIS.sh": emergency_sh,
 }
 
-for path, content in all_files.items():
+for path, content in files.items():
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", newline="\n", encoding="utf-8") as f:
         f.write(content)
-    print(f"Generated: {path}")
+    print(f"Updated: {path}")
 
-print("\nAll package files created successfully.")
+# Ensure NEMESIS.emergency flag exists
+(USB_RECOVERY_DIR / "NEMESIS.emergency").write_bytes(b"")
+print("Verified: NEMESIS.emergency flag file present.")

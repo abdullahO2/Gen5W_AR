@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# common.sh - Helper functions for Gen5W NEMESIS package
+# common.sh - Universal helper library for Gen5W (Pure toolbox compatible)
 export PATH=/data/nemesis/bin:/sbin:/vendor/bin:/system/sbin:/system/bin:/system/xbin
 export LD_LIBRARY_PATH=/vendor/lib:/system/lib
 
@@ -47,13 +47,147 @@ sys_ro() {
 verify_prop_file() {
     local _f="$1"
     if [ ! -f "$_f" ] || [ ! -s "$_f" ]; then
-        log "FAIL: $_f does not exist or is empty"
+        log "[AR] خطأ: الملف غير موجود أو فارغ"
+        log "[EN] FAIL: $_f does not exist or is empty"
         return 1
     fi
     if ! grep "ro.build." "$_f" >/dev/null 2>&1; then
-        log "FAIL: $_f missing essential ro.build properties"
+        log "[AR] خطأ: الملف لا يحتوي على خصائص النظام الأساسية"
+        log "[EN] FAIL: $_f missing essential ro.build properties"
         return 1
     fi
+    return 0
+}
+
+find_usb_root() {
+    for _u in /storage/usb0 /storage/usb1 /storage/usb2 /mnt/media_rw/usb0 /mnt/media_rw/usb1 /mnt/media_rw/usb2 /storage/usbotg; do
+        if [ -d "$_u" ] && [ -w "$_u" ]; then
+            echo "$_u"
+            return 0
+        fi
+    done
+    for _u in /storage/usb* /mnt/media_rw/usb*; do
+        if [ -d "$_u" ] && [ -w "$_u" ]; then
+            echo "$_u"
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Universal per-car backup onto the connected USB drive and local storage
+backup_vehicle_oem() {
+    local _src="$BP"
+    if ! verify_prop_file "$_src"; then
+        log "[AR] خطأ: لا يمكن عمل نسخة احتياطية لملف تالف"
+        log "[EN] FAIL: Refusing to backup invalid $_src"
+        return 1
+    fi
+
+    mkdir -p "$BACKUP_DIR" 2>/dev/null || true
+
+    # 1. Permanent global internal backup (never overwritten if already valid)
+    if [ ! -s "$GLOBAL_BACKUP" ] || ! verify_prop_file "$GLOBAL_BACKUP"; then
+        cp -f "$_src" "$GLOBAL_BACKUP" 2>/dev/null || true
+        log "[AR] تم حفظ النسخة الاحتياطية الداخلية الدائمة"
+        log "[EN] Saved permanent global internal backup: $GLOBAL_BACKUP"
+    fi
+
+    # 2. Package-specific internal backup
+    if [ ! -s "$BACKUP_DIR/build.prop.stock" ]; then
+        cp -f "$_src" "$BACKUP_DIR/build.prop.stock" 2>/dev/null || true
+    fi
+    putline 1 > "$BACKUP_DIR/saved" 2>/dev/null || true
+
+    # 3. Dynamic USB Backup on the user's specific flash drive
+    local _usb
+    _usb="$(find_usb_root)"
+    if [ -n "$_usb" ] && [ -d "$_usb" ]; then
+        local _usb_dir="$_usb/OEM_BACKUP"
+        mkdir -p "$_usb_dir" 2>/dev/null || true
+        
+        # Standard filename for automatic recovery
+        cp -f "$_src" "$_usb_dir/build.prop.stock" 2>/dev/null || true
+        
+        # Vehicle-specific informative archive filename
+        local _model="$(getprop ro.product.model 2>/dev/null)"
+        [ -z "$_model" ] && _model="Gen5W"
+        local _sw="$(getprop ro.build.product2 2>/dev/null)"
+        [ -z "$_sw" ] && _sw="$(getprop ro.build.product 2>/dev/null)"
+        [ -z "$_sw" ] && _sw="SW_STOCK"
+
+        cp -f "$_src" "$_usb_dir/build.prop.${_model}_${_sw}" 2>/dev/null || true
+        sync
+        log "[AR] تم إنشاء نسخة المصنع الاحتياطية بنجاح على الفلاش:"
+        log "[EN] Successfully created USB OEM backup: $_usb_dir/build.prop.stock"
+    else
+        log "[AR] تنبيه: تعذر الكتابة على الفلاش، تم حفظ النسخة الاحتياطية في الذاكرة الداخلية."
+        log "[EN] NOTICE: USB mount not writable; internal stock backup saved safely."
+    fi
+    return 0
+}
+
+# Universal language list builder: preserves any car's native languages (KR, US, EU, etc.) and appends ar_EG
+get_universal_language_list() {
+    local _curr="$(getprop persist.sys.language_list 2>/dev/null)"
+    if [ -z "$_curr" ]; then
+        if [ -f "$BP" ]; then
+            _curr="$(grep '^persist.sys.language_list=' "$BP" 2>/dev/null | cut -d= -f2-)"
+        fi
+    fi
+    [ -z "$_curr" ] && _curr="ko_KR,en_US"
+
+    case "$_curr" in
+        *ar_EG*)
+            echo "$_curr"
+            ;;
+        *)
+            echo "${_curr},ar_EG"
+            ;;
+    esac
+}
+
+# Apply profile settings directly in user data partition (settings.db & persist)
+apply_profile_arabic() {
+    log "[AR] جاري تفعيل اللغة العربية في إعدادات البروفايل..."
+    log "[EN] Applying Arabic localization to Driver Profile..."
+    
+    # Update settings provider for Driver 1, Driver 2, and Guest
+    settings put system language_type_dr1 ar_EG 2>/dev/null || true
+    settings put system language_type_dr2 ar_EG 2>/dev/null || true
+    settings put system language_type ar_EG 2>/dev/null || true
+
+    # Append ar_EG to language list in /data/property/ (without touching /system/build.prop!)
+    local _langs="$(get_universal_language_list)"
+    setprop persist.sys.language_list "$_langs" 2>/dev/null || true
+
+    # Set current locale to Arabic
+    setprop persist.sys.language ar 2>/dev/null || true
+    setprop persist.sys.country EG 2>/dev/null || true
+
+    # Trigger locale change broadcast
+    settings put system settings.locale.change 1 2>/dev/null || true
+    am broadcast -a android.intent.action.LOCALE_CHANGED >/dev/null 2>&1 || true
+
+    log "[AR] تم تفعيل لغة البروفايل بنجاح"
+    log "[EN] Profile language set to ar_EG (language_list: $_langs)"
+    return 0
+}
+
+restore_profile_language() {
+    log "[AR] جاري استرجاع لغة البروفايل للوضع الافتراضي..."
+    log "[EN] Restoring Driver Profile language to default..."
+    settings put system language_type_dr1 en_US 2>/dev/null || true
+    settings put system language_type_dr2 Unknown 2>/dev/null || true
+    settings put system language_type Unknown 2>/dev/null || true
+
+    # Remove runtime persist overrides
+    rm -f /data/property/persist.sys.language_list 2>/dev/null || true
+    rm -f /data/property/persist.sys.language 2>/dev/null || true
+    rm -f /data/property/persist.sys.country 2>/dev/null || true
+
+    settings put system settings.locale.change 1 2>/dev/null || true
+    am broadcast -a android.intent.action.LOCALE_CHANGED >/dev/null 2>&1 || true
     return 0
 }
 
@@ -62,61 +196,21 @@ commit_tmp() {
     local _tmp="$2"
     
     if ! verify_prop_file "$_tmp"; then
-        log "FAIL: commit aborted, temp file failed validation"
+        log "[AR] فشل التحقق من صحة الملف المؤقت"
+        log "[EN] FAIL: commit aborted, temp file failed validation"
         rm -f "$_tmp" 2>/dev/null || true
         return 1
     fi
     
     cp -f "$_tmp" "$_dst" || {
-        log "FAIL: cp $_tmp to $_dst failed"
+        log "[AR] فشل نسخ الملف إلى مسار النظام"
+        log "[EN] FAIL: cp $_tmp to $_dst failed"
         return 1
     }
     
     chmod 644 "$_dst" 2>/dev/null || true
     chown 0.0 "$_dst" 2>/dev/null || chown 0:0 "$_dst" 2>/dev/null || true
     rm -f "$_tmp" 2>/dev/null || true
-    return 0
-}
-
-snapshot_all() {
-    # If a valid global stock backup already exists, preserve it permanently!
-    if [ -s "$GLOBAL_BACKUP" ] && verify_prop_file "$GLOBAL_BACKUP"; then
-        log "Original factory backup already verified at $GLOBAL_BACKUP (preserved)"
-        mkdir -p "$BACKUP_DIR" 2>/dev/null || true
-        if [ ! -s "$BACKUP_DIR/build.prop.stock" ]; then
-            cp -f "$GLOBAL_BACKUP" "$BACKUP_DIR/build.prop.stock" 2>/dev/null || true
-        fi
-        putline 1 > "$BACKUP_DIR/saved" 2>/dev/null || true
-        return 0
-    fi
-
-    if [ -s "$BACKUP_DIR/saved" ]; then
-        log "Stock backup already exists ($BACKUP_DIR) - keeping original intact"
-        return 0
-    fi
-    
-    if ! verify_prop_file "$BP"; then
-        log "FAIL: Refusing to snapshot invalid $BP"
-        return 1
-    fi
-    
-    mkdir -p "$BACKUP_DIR" || return 1
-    
-    # Save full build.prop to package backup dir
-    cp -f "$BP" "$BACKUP_DIR/build.prop.stock" || return 1
-    if ! verify_prop_file "$BACKUP_DIR/build.prop.stock"; then
-        log "FAIL: Snapshot build.prop.stock verification failed"
-        rm -rf "$BACKUP_DIR"
-        return 1
-    fi
-    
-    # Save permanent global stock copy
-    if [ ! -s "$GLOBAL_BACKUP" ]; then
-        cp -f "$BP" "$GLOBAL_BACKUP" 2>/dev/null || true
-    fi
-    
-    putline 1 > "$BACKUP_DIR/saved" || return 1
-    log "Successfully created stock backup in $BACKUP_DIR"
     return 0
 }
 
@@ -152,67 +246,84 @@ set_prop_line() {
     fi
     
     if [ "$_out" -lt "$_in" ]; then
-        log "FAIL: rewrite of $_file dropped lines ($_out < $_in)"
+        log "[AR] خطأ: سقطت أسطر أثناء تعديل الملف"
+        log "[EN] FAIL: rewrite of $_file dropped lines ($_out < $_in)"
         rm -f "$_tmp" 2>/dev/null || true
         return 1
     fi
     
     commit_tmp "$_file" "$_tmp" || return 1
-    log "Property set: ${_key}=${_val}"
+    log "[AR] تم ضبط الخاصية: ${_key}=${_val}"
+    log "[EN] Property set: ${_key}=${_val}"
     return 0
 }
 
-restore_all() {
-    local _stock="$BACKUP_DIR/build.prop.stock"
-    if [ ! -s "$_stock" ]; then
+restore_build_prop() {
+    local _stock=""
+    local _usb="$(find_usb_root)"
+
+    if [ -n "$_usb" ] && [ -s "$_usb/OEM_BACKUP/build.prop.stock" ] && verify_prop_file "$_usb/OEM_BACKUP/build.prop.stock"; then
+        _stock="$_usb/OEM_BACKUP/build.prop.stock"
+        log "[AR] تم العثور على نسخة المصنع في الفلاش:"
+        log "[EN] Found USB OEM backup: $_stock"
+    elif [ -s "$BACKUP_DIR/build.prop.stock" ] && verify_prop_file "$BACKUP_DIR/build.prop.stock"; then
+        _stock="$BACKUP_DIR/build.prop.stock"
+        log "[AR] تم العثور على نسخة المصنع في مجلد الحزمة:"
+        log "[EN] Found package backup: $_stock"
+    elif [ -s "$GLOBAL_BACKUP" ] && verify_prop_file "$GLOBAL_BACKUP"; then
         _stock="$GLOBAL_BACKUP"
+        log "[AR] تم العثور على نسخة المصنع الدائمة:"
+        log "[EN] Found global backup: $_stock"
     fi
-    
-    if ! verify_prop_file "$_stock"; then
-        log "FAIL: Cannot restore, valid stock backup not found"
+
+    if [ -z "$_stock" ]; then
+        log "[AR] خطأ: تعذر العثور على نسخة احتياطية صالحة لمصنع السيارة"
+        log "[EN] FAIL: Cannot restore build.prop, valid stock backup not found"
         return 1
     fi
-    
+
     if ! sys_rw; then
-        log "FAIL: remount /system rw failed during restore"
+        log "[AR] خطأ: تعذر فتح نظام الملفات للكتابة"
+        log "[EN] FAIL: remount /system rw failed during restore"
         return 1
     fi
-    
+
     cp -f "$_stock" "$BP" || {
         sys_ro
-        log "FAIL: Restoring stock build.prop failed"
+        log "[AR] خطأ: فشل استرجاع ملف build.prop الأصلي"
+        log "[EN] FAIL: Restoring stock build.prop failed"
         return 1
     }
-    
+
     chmod 644 "$BP" 2>/dev/null || true
     chown 0.0 "$BP" 2>/dev/null || chown 0:0 "$BP" 2>/dev/null || true
-    
-    # Clean runtime persist overrides
-    rm -f /data/property/persist.sys.language_list 2>/dev/null || true
-    
+
     sync
     sys_ro
-    log "Restored stock build.prop successfully"
+    log "[AR] تم استرجاع ملف build.prop الأصلي للوكالة بنجاح"
+    log "[EN] Restored stock build.prop successfully from $_stock"
     return 0
 }
 
-# Automatically rename NEMESIS.data on USB drives to prevent repeated prompts on boot
 rename_usb_data() {
     local _src="$1"
     local _dst="$2"
-    for _usb in /storage/usb* /mnt/media_rw/usb* /storage/usbotg*; do
-        if [ -d "$_usb" ] && [ -f "$_usb/$_src" ]; then
-            mv "$_usb/$_src" "$_usb/$_dst" 2>/dev/null && {
-                log "Renamed $_usb/$_src -> $_usb/$_dst"
+    for _u in /storage/usb* /mnt/media_rw/usb* /storage/usbotg*; do
+        if [ -d "$_u" ] && [ -f "$_u/$_src" ]; then
+            mv "$_u/$_src" "$_u/$_dst" 2>/dev/null && {
+                log "[AR] تم تغيير اسم ملف التهيئة على الفلاش:"
+                log "[EN] Renamed $_u/$_src -> $_u/$_dst"
                 sync
             }
         fi
     done
 }
 
+# Spawns detached reboot subshell so script exits 0 immediately.
+# This allows NEMESIS to cleanly delete package records from packages.db before restarting.
 reboot_system() {
-    log "Reboot triggered. Syncing disks and restarting..."
+    log "[AR] جاري جدولة إعادة التشغيل التلقائي خلال 4 ثوان..."
+    log "[EN] Reboot scheduled in 4 seconds (detached)..."
     sync
-    sleep 2
-    /system/bin/reboot 2>/dev/null || reboot 2>/dev/null || true
+    ( sleep 4; sync; /system/bin/reboot 2>/dev/null || reboot 2>/dev/null ) >/dev/null 2>&1 &
 }

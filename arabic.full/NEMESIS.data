@@ -1,11 +1,11 @@
 [nemesis]
 version=1.1
 id=arabic.full
-name="Arabic & ME Region (Full)"
+name="ME Map & Arabic | توافق خرائط الشرق الأوسط"
 type=application
-package-version=1.2
-short-desc="Arabic UI + Middle East Region for Native Maps"
-detailed-desc="Full Mode: Adds Arabic UI and sets ME region (ro.product.locale.region=ME) for offline native maps. NOTE: May conflict with Korean-market mods (Wireless CarPlay/AA). Includes auto backup, auto reboot, and USB unlooping."
+package-version=1.5
+short-desc="توافق خرائط الشرق الأوسط (ME Map Mod)"
+detailed-desc="[AR] تهيئة النظام لقبول خرائط الشرق الأوسط (لا تشمل الخرائط).\n[EN] Full Mode: Enables ME native map compatibility (does not include map files). Sets region to ME. Creates per-vehicle USB backup & auto-reboot."
 os=any
 models=any
 preinstall=scripts/pre.sh

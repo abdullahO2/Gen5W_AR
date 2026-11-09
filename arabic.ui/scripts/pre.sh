@@ -9,10 +9,13 @@ log() {
 }
 
 log "=========================================================="
-log " DISCLAIMER / إخلاء مسؤولية "
-log " Installing Arabic UI Language (Safe Profile Mode). "
-log " This package modifies persist.sys.language_list only. "
-log " System region and navigation engine remain untouched. "
-log " Author holds no liability for device failure or damage. "
+log "[AR] تفعيل تعريب البروفايل (الوضع الآمن - عام لسيارات Gen5W)"
+log "[EN] Activating Arabic Profile UI (Safe Mode - Universal Gen5W)"
+log ""
+log "[AR] إخلاء مسؤولية: استخدامك للحزمة يتم على مسؤوليتك الشخصية."
+log "[EN] DISCLAIMER: Use at your own risk. Author holds no liability."
+log ""
+log "[AR] التعديل في بيانات المستخدم فقط، ولا يمس نظام /system أو ملف build.prop."
+log "[EN] Modifies user profile data only. ZERO /system or build.prop changes."
 log "=========================================================="
 exit 0

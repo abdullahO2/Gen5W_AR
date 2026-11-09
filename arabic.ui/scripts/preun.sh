@@ -2,21 +2,21 @@
 export PATH=/data/nemesis/bin:/sbin:/vendor/bin:/system/sbin:/system/bin:/system/xbin
 . ./scripts/common.sh
 
-log "=== Uninstalling arabic.ui package ==="
+log "=== [AR] بدء إزالة حزمة التعريب ==="
+log "=== [EN] Uninstalling arabic.ui ==="
 
-if ! restore_all; then
-    log "ABORT: Restore failed. Keeping backup for safety."
-    toast "Arabic Mod: Restore failed! Check log."
-    exit 1
-fi
-
+restore_profile_language
 rm -rf "$BACKUP_DIR" 2>/dev/null || true
 sync
 
 # Re-enable installer on USB if USB is still plugged in
 rename_usb_data "NEMESIS.data.installed" "NEMESIS.data"
 
-log "=== arabic.ui uninstalled successfully ==="
-toast "Arabic UI: Restored to stock OEM! Rebooting in 3 seconds..."
+log "=== [AR] تمت الإزالة واسترجاع الإعدادات بنجاح ==="
+log "=== [EN] arabic.ui uninstalled successfully ==="
+toast "تمت الإزالة والعودة للوضع الافتراضي
+Restored to default! Rebooting..."
+
+# Spawns detached reboot subshell and exits 0 immediately so NEMESIS removes package cleanly
 reboot_system
 exit 0
