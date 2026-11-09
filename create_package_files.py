@@ -93,7 +93,7 @@ find_usb_root() {
     return 1
 }
 
-# Universal per-car backup onto the connected USB drive and local storage
+# Universal per-car backup onto the connected USB drive AND inside head unit storage
 backup_vehicle_oem() {
     local _src="$BP"
     if ! verify_prop_file "$_src"; then
@@ -102,16 +102,17 @@ backup_vehicle_oem() {
         return 1
     fi
 
+    # 1. Permanent global internal backup inside the head unit (/data/nemesis/build.prop.stock)
+    mkdir -p /data/nemesis 2>/dev/null || true
     mkdir -p "$BACKUP_DIR" 2>/dev/null || true
 
-    # 1. Permanent global internal backup (never overwritten if already valid)
     if [ ! -s "$GLOBAL_BACKUP" ] || ! verify_prop_file "$GLOBAL_BACKUP"; then
         cp -f "$_src" "$GLOBAL_BACKUP" 2>/dev/null || true
-        log "[AR] تم حفظ النسخة الاحتياطية الداخلية الدائمة"
-        log "[EN] Saved permanent global internal backup: $GLOBAL_BACKUP"
+        log "[AR] تم حفظ النسخة الاحتياطية الدائمة داخل ذاكرة الوحدة: $GLOBAL_BACKUP"
+        log "[EN] Saved permanent internal backup inside head unit: $GLOBAL_BACKUP"
     fi
 
-    # 2. Package-specific internal backup
+    # 2. Package-specific internal backup inside the head unit
     if [ ! -s "$BACKUP_DIR/build.prop.stock" ]; then
         cp -f "$_src" "$BACKUP_DIR/build.prop.stock" 2>/dev/null || true
     fi
@@ -139,8 +140,8 @@ backup_vehicle_oem() {
         log "[AR] تم إنشاء نسخة المصنع الاحتياطية بنجاح على الفلاش:"
         log "[EN] Successfully created USB OEM backup: $_usb_dir/build.prop.stock"
     else
-        log "[AR] تنبيه: تعذر الكتابة على الفلاش، تم حفظ النسخة الاحتياطية في الذاكرة الداخلية."
-        log "[EN] NOTICE: USB mount not writable; internal stock backup saved safely."
+        log "[AR] تنبيه: تعذر الكتابة على الفلاش، تم حفظ النسخة الاحتياطية في الذاكرة الداخلية للشاشة."
+        log "[EN] NOTICE: USB mount not writable; internal stock backup saved inside head unit storage."
     fi
     return 0
 }
@@ -290,8 +291,8 @@ restore_build_prop() {
         log "[EN] Found package backup: $_stock"
     elif [ -s "$GLOBAL_BACKUP" ] && verify_prop_file "$GLOBAL_BACKUP"; then
         _stock="$GLOBAL_BACKUP"
-        log "[AR] تم العثور على نسخة المصنع الدائمة:"
-        log "[EN] Found global backup: $_stock"
+        log "[AR] تم العثور على نسخة المصنع الدائمة داخل الوحدة:"
+        log "[EN] Found global backup inside head unit: $_stock"
     fi
 
     if [ -z "$_stock" ]; then
@@ -316,6 +317,12 @@ restore_build_prop() {
     chmod 644 "$BP" 2>/dev/null || true
     chown 0.0 "$BP" 2>/dev/null || chown 0:0 "$BP" 2>/dev/null || true
 
+    # Preserve internal stock backup on unit if missing
+    mkdir -p /data/nemesis 2>/dev/null || true
+    if [ ! -s "$GLOBAL_BACKUP" ] || ! verify_prop_file "$GLOBAL_BACKUP"; then
+        cp -f "$_stock" "$GLOBAL_BACKUP" 2>/dev/null || true
+    fi
+
     sync
     sys_ro
     log "[AR] تم استرجاع ملف build.prop الأصلي للوكالة بنجاح"
@@ -338,7 +345,6 @@ rename_usb_data() {
 }
 
 # Spawns detached reboot subshell so script exits 0 immediately.
-# This allows NEMESIS to cleanly delete package records from packages.db before restarting.
 reboot_system() {
     log "[AR] جاري جدولة إعادة التشغيل التلقائي خلال 4 ثوان..."
     log "[EN] Reboot scheduled in 4 seconds (detached)..."
@@ -400,7 +406,7 @@ export PATH=/data/nemesis/bin:/sbin:/vendor/bin:/system/sbin:/system/bin:/system
 log "=== [AR] بدء تثبيت تعريب البروفايل ==="
 log "=== [EN] Installing arabic.ui ==="
 
-# 1. Universal OEM backup to USB & local storage
+# 1. Universal Dual OEM backup: to USB & internally inside head unit storage
 backup_vehicle_oem
 
 # 2. Apply Arabic settings to Driver Profile and persist properties (No /system write!)
@@ -533,8 +539,8 @@ log ""
 log "[AR] تنبيه: تعديل منطقة النظام إلى ME قد يعطل بعض التعديلات الكورية."
 log "[EN] NOTICE: Changing system region to ME may deactivate Korean mods."
 log ""
-log "[AR] يتم حفظ نسخة المصنع لسيارتك تلقائياً على الفلاش ميموري."
-log "[EN] Automatic per-vehicle OEM backup created on USB drive."
+log "[AR] يتم حفظ نسخة المصنع لسيارتك تلقائياً على الفلاش ميموري وداخل ذاكرة الشاشة."
+log "[EN] Automatic dual OEM backup created on USB drive and inside head unit storage."
 log "=========================================================="
 exit 0
 """
@@ -546,7 +552,7 @@ export PATH=/data/nemesis/bin:/sbin:/vendor/bin:/system/sbin:/system/bin:/system
 log "=== [AR] بدء تثبيت تهيئة خرائط الشرق الأوسط والتعريب ==="
 log "=== [EN] Installing arabic.full (ME Map Compatibility) ==="
 
-# 1. Dynamic OEM backup to USB (OEM_BACKUP folder) and internal storage
+# 1. Dual OEM backup: to USB (OEM_BACKUP folder) AND internal head unit storage
 if ! backup_vehicle_oem; then
     log "[AR] خطأ: فشل النسخ الاحتياطي! تم إلغاء العملية."
     log "[EN] ABORT: Per-vehicle OEM backup failed! System untouched."
@@ -672,7 +678,7 @@ exit 0
 """
 
 # ==============================================================================
-# 3. UNIVERSAL EMERGENCY RECOVERY SCRIPT (Bilingual & Per-Car Discovery)
+# 3. UNIVERSAL EMERGENCY RECOVERY SCRIPT (Dual Backup & Head Unit Internal Preservation)
 # ==============================================================================
 emergency_data = """[nemesis]
 version=1.0
@@ -682,7 +688,8 @@ path=NEMESIS.sh
 
 emergency_sh = """#!/system/bin/sh
 # Universal Failsafe Emergency Recovery Script for Gen5W (Pure toolbox compatible)
-# Dynamically searches for that vehicle's own backup on USB or internal storage
+# Dynamically searches for that vehicle's own backup on USB or internal storage,
+# and guarantees a permanent internal backup is always preserved inside the head unit.
 export PATH=/data/nemesis/bin:/sbin:/vendor/bin:/system/sbin:/system/bin:/system/xbin
 export LD_LIBRARY_PATH=/vendor/lib:/system/lib
 
@@ -749,7 +756,7 @@ find_backup_source() {
         fi
     done
 
-    # 3. Check internal global stock backup on the car
+    # 3. Check internal global stock backup on the car (/data/nemesis/build.prop.stock)
     if [ -s "$GLOBAL_STOCK" ] && verify_prop_file "$GLOBAL_STOCK"; then
         echo "$GLOBAL_STOCK"
         return 0
@@ -805,6 +812,14 @@ File copy failed!"
 
 chmod 644 "$BP" 2>/dev/null || true
 chown 0.0 "$BP" 2>/dev/null || chown 0:0 "$BP" 2>/dev/null || true
+
+# GUARANTEE DUAL BACKUP: Save/preserve internal backup inside the head unit's internal storage
+mkdir -p /data/nemesis 2>/dev/null || true
+if [ ! -s "$GLOBAL_STOCK" ] || ! verify_prop_file "$GLOBAL_STOCK"; then
+    cp -f "$SOURCE" "$GLOBAL_STOCK" 2>/dev/null || true
+    log "[AR] تم حفظ نسخة احتياطية إضافية داخل ذاكرة الوحدة: $GLOBAL_STOCK"
+    log "[EN] Saved permanent internal backup inside head unit storage: $GLOBAL_STOCK"
+fi
 
 # Clear persist locale and timezone overrides
 rm -f /data/property/persist.sys.language_list 2>/dev/null || true

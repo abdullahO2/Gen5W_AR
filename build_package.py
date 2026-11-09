@@ -6,6 +6,7 @@ from pathlib import Path
 BASE_DIR = Path(r"C:\Users\k\.gemini\antigravity\scratch\nemesis-arabic-package")
 USB_PKG_DIR = BASE_DIR / "usb_package"
 USB_RECOVERY_DIR = BASE_DIR / "usb_emergency_recovery"
+RELEASES_DIR = BASE_DIR / "releases"
 
 SHORT_MAX = 64
 DETAIL_MAX = 256
@@ -68,12 +69,6 @@ def build_all_packages():
     pkgs_dir = USB_PKG_DIR / "packages"
     pkgs_dir.mkdir(parents=True, exist_ok=True)
 
-    # Clean legacy zip files if present
-    legacy_zip = pkgs_dir / "arabic.locale.zip"
-    if legacy_zip.exists():
-        legacy_zip.unlink()
-        print(f"Removed legacy zip: {legacy_zip.name}")
-
     print("\n--- Building Package 1: arabic.ui (Safe Profile Mode) ---")
     build_single_zip(BASE_DIR / "arabic.ui", pkgs_dir / "arabic.ui.zip")
 
@@ -82,7 +77,6 @@ def build_all_packages():
 
 
 def create_usb_installer_files():
-    # Multi-package store selector (type=list)
     usb_data = """[nemesis]
 version=1.0
 type=list
@@ -99,126 +93,37 @@ path=packages/arabic.full.zip
     print(f"\nCreated USB Package Store descriptor: {usb_data_file}")
 
 
-def create_emergency_recovery_files():
-    USB_RECOVERY_DIR.mkdir(parents=True, exist_ok=True)
-    emerg_flag = USB_RECOVERY_DIR / "NEMESIS.emergency"
-    emerg_flag.write_bytes(b"")
+def create_releases_zip():
+    RELEASES_DIR.mkdir(parents=True, exist_ok=True)
+    out_usb_pkg = RELEASES_DIR / "Gen5W_Arabic_USB_Package.zip"
 
-    emerg_data = """[nemesis]
-version=1.0
-type=execute
-path=NEMESIS.sh
-"""
-    with open(USB_RECOVERY_DIR / "NEMESIS.data", "w", newline="\n", encoding="utf-8") as f:
-        f.write(emerg_data)
+    # Zip the contents of usb_package/ directly at the root of the archive
+    with zipfile.ZipFile(out_usb_pkg, "w", compression=zipfile.ZIP_DEFLATED) as z:
+        for p in sorted(USB_PKG_DIR.rglob("*")):
+            if p.is_file():
+                arcname = p.relative_to(USB_PKG_DIR).as_posix()
+                z.write(p, arcname)
+                print(f"  + releases/Gen5W_Arabic_USB_Package.zip: {arcname}")
 
-    emerg_sh = """#!/system/bin/sh
-# Failsafe Emergency Recovery Script for Gen5W (Pure toolbox compatible)
-export PATH=/data/nemesis/bin:/sbin:/vendor/bin:/system/sbin:/system/bin:/system/xbin
-export LD_LIBRARY_PATH=/vendor/lib:/system/lib
+    print(f"\nCreated Releases ZIP archive: {out_usb_pkg} ({out_usb_pkg.stat().st_size} bytes)")
 
-BP=/system/build.prop
-GLOBAL_STOCK=/data/nemesis/build.prop.stock
-BACKUP_UI=/data/nemesis/backup/arabic.ui/build.prop.stock
-BACKUP_FULL=/data/nemesis/backup/arabic.full/build.prop.stock
-USB_BACKUP=./build.prop
-LOG=./emergency-recover.log
+    out_recovery_pkg = RELEASES_DIR / "Gen5W_Emergency_Recovery_USB.zip"
+    with zipfile.ZipFile(out_recovery_pkg, "w", compression=zipfile.ZIP_DEFLATED) as z:
+        for p in sorted(USB_RECOVERY_DIR.rglob("*")):
+            if p.is_file():
+                arcname = p.relative_to(USB_RECOVERY_DIR).as_posix()
+                z.write(p, arcname)
+                print(f"  + releases/Gen5W_Emergency_Recovery_USB.zip: {arcname}")
 
-log() {
-    echo "$1"
-    mkdir -p /data/nemesis 2>/dev/null || true
-    echo "$1" >> "$LOG" 2>/dev/null || true
-}
-
-toast() {
-    local _msg="$1"
-    am broadcast -a com.hkmc.intent.action.TOAST \\
-        -e com.hkmc.intent.extra.TOAST_MESSAGE "$_msg" \\
-        --ez com.hkmc.intent.extra.TOAST_POPUPSHOWING true >/dev/null 2>&1 || true
-}
-
-sys_rw() {
-    /system/xbin/nemesis remount rw >/dev/null 2>&1 && return 0
-    mount -o remount,rw /system 2>/dev/null && return 0
-    mount -o rw,remount /system 2>/dev/null && return 0
-    return 1
-}
-
-sys_ro() {
-    /system/xbin/nemesis remount ro >/dev/null 2>&1 || true
-    mount -o remount,ro /system 2>/dev/null || true
-}
-
-verify_prop_file() {
-    local _f="$1"
-    if [ ! -f "$_f" ] || [ ! -s "$_f" ]; then
-        return 1
-    fi
-    if ! grep "ro.build." "$_f" >/dev/null 2>&1; then
-        return 1
-    fi
-    return 0
-}
-
-log "=== EMERGENCY RESTORATION TRIGGERED ==="
-toast "NEMESIS: Emergency Recovery Triggered..."
-
-SOURCE=""
-if [ -s "$USB_BACKUP" ] && verify_prop_file "$USB_BACKUP"; then
-    SOURCE="$USB_BACKUP"
-    log "Using USB backup: $SOURCE"
-elif [ -s "$GLOBAL_STOCK" ] && verify_prop_file "$GLOBAL_STOCK"; then
-    SOURCE="$GLOBAL_STOCK"
-    log "Using permanent stock backup: $SOURCE"
-elif [ -s "$BACKUP_UI" ] && verify_prop_file "$BACKUP_UI"; then
-    SOURCE="$BACKUP_UI"
-    log "Using UI package backup: $SOURCE"
-elif [ -s "$BACKUP_FULL" ] && verify_prop_file "$BACKUP_FULL"; then
-    SOURCE="$BACKUP_FULL"
-    log "Using Full package backup: $SOURCE"
-else
-    log "CRITICAL: No valid factory backup file found!"
-    toast "Recovery Error: No backup found!"
-    exit 1
-fi
-
-if ! sys_rw; then
-    log "FAIL: cannot remount /system rw"
-    toast "Recovery Error: Cannot remount rw!"
-    exit 1
-fi
-
-cp -f "$SOURCE" "$BP" || {
-    sys_ro
-    log "FAIL: cp failed"
-    toast "Recovery Error: File copy failed!"
-    exit 1
-}
-
-chmod 644 "$BP" 2>/dev/null || true
-chown 0.0 "$BP" 2>/dev/null || chown 0:0 "$BP" 2>/dev/null || true
-
-# Clear persist locale overrides
-rm -f /data/property/persist.sys.language_list 2>/dev/null || true
-rm -f /data/property/persist.sys.timezone 2>/dev/null || true
-
-sys_ro
-sync
-log "=== EMERGENCY RESTORE COMPLETED SUCCESSFULLY. REBOOTING ==="
-toast "Recovery: Stock restored! Rebooting in 3 seconds..."
-
-sleep 2
-/system/bin/reboot 2>/dev/null || reboot 2>/dev/null || true
-exit 0
-"""
-    with open(USB_RECOVERY_DIR / "NEMESIS.sh", "w", newline="\n", encoding="utf-8") as f:
-        f.write(emerg_sh)
-
-    print(f"Created emergency recovery tools in: {USB_RECOVERY_DIR}")
+    print(f"Created Recovery ZIP archive: {out_recovery_pkg} ({out_recovery_pkg.stat().st_size} bytes)")
 
 
 if __name__ == "__main__":
+    # Ensure source files are up-to-date
+    import create_package_files
+    print("\nPackage source files generated from create_package_files.py")
+
     build_all_packages()
     create_usb_installer_files()
-    create_emergency_recovery_files()
-    print("\n--- All Builds and Assets Successfully Created ---")
+    create_releases_zip()
+    print("\n--- All Builds, USB Installer, and Releases Successfully Created ---")

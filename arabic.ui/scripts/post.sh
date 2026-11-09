@@ -5,7 +5,7 @@ export PATH=/data/nemesis/bin:/sbin:/vendor/bin:/system/sbin:/system/bin:/system
 log "=== [AR] بدء تثبيت تعريب البروفايل ==="
 log "=== [EN] Installing arabic.ui ==="
 
-# 1. Universal OEM backup to USB & local storage
+# 1. Universal Dual OEM backup: to USB & internally inside head unit storage
 backup_vehicle_oem
 
 # 2. Apply Arabic settings to Driver Profile and persist properties (No /system write!)

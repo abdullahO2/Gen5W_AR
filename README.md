@@ -14,9 +14,34 @@
 > **[EN] CRITICAL NOTICE REGARDING NAVIGATION MAPS:**  
 > This package **does NOT contain or download map files**. It only provides the **system-level adaptation** required for the vehicle's native navigation engine to recognize, accept, and run Middle East map data (which must be supplied separately via an SD card or official map update).
 
+> [!NOTE]
+> **[AR] ميزة الأمان المزدوج للنسخ الاحتياطي (USB + ذاكرة الشاشة):**  
+> عند تشغيل الحزمة أو استخدام فلاشة الطوارئ، يقوم النظام تلقائياً وبشكل فوري بحفظ نسخة احتياطية من ملفات المصنع الأصلية لسيارتك في **مكانين مستقلين**:  
+> 1. داخل الفلاش ميموري (USB) في مجلد `OEM_BACKUP`.  
+> 2. داخل الذاكرة الداخلية لوحدة الشاشة نفسها في مسار محمي `/data/nemesis/build.prop.stock`.  
+> وبذلك تضمن بقاء نسخة الوكالة الأصلية محفوظة دائماً حتى لو ضاع الفلاش ميموري!
+>
+> **[EN] Dual Backup Redundancy Feature (USB + Head Unit Storage):**  
+> During installation or when using the Emergency Recovery Stick, the system automatically saves a genuine OEM backup of your vehicle's factory files to **two independent locations**:  
+> 1. Onto your USB drive inside the `OEM_BACKUP` folder.  
+> 2. Internally inside your head unit's permanent storage at `/data/nemesis/build.prop.stock`.  
+> This guarantees your factory state is always safely retained even if the USB drive is detached or lost.
+
 ---
 
-## 📦 مقارنة الخيارات المتاحة / Available Options Comparison
+## 📦 حزم التحميل الجاهزة / Ready-to-Use Release Packages
+
+يمكنك تحميل الحزم الجاهزة للنسخ المباشر من مجلد [`releases/`](releases/):
+* 💾 **[`Gen5W_Arabic_USB_Package.zip`](releases/Gen5W_Arabic_USB_Package.zip)**:  
+  **[AR]** ملف مضغوط يحتوي على كافة ملفات التثبيت الجاهزة (`NEMESIS.data` و `packages/`). فقط فك الضغط مباشرة داخل الفلاش ميموري (FAT32).  
+  **[EN]** Pre-packaged zip containing ready-to-use installer files. Extract directly to the root of your FAT32 USB drive.
+* 🆘 **[`Gen5W_Emergency_Recovery_USB.zip`](releases/Gen5W_Emergency_Recovery_USB.zip)**:  
+  **[AR]** فلاشة الطوارئ الشاملة الجاهزة للفك المباشر.  
+  **[EN]** Universal emergency recovery package ready to extract to a USB drive.
+
+---
+
+## 📊 مقارنة الخيارات المتاحة / Available Options Comparison
 
 | وجه المقارنة / Feature | الخيار الأول: تعريب البروفايل (الآمن 100%)<br>Mode 1: Safe Profile UI (`arabic.ui`) | الخيار الثاني: توافق خرائط الشرق الأوسط والتعريب<br>Mode 2: ME Map Compatibility & Arabic (`arabic.full`) |
 | :--- | :--- | :--- |
@@ -43,7 +68,7 @@
 ---
 
 ### [AR] خطوات التركيب:
-1. انسخ محتويات مجلد [`usb_package`](usb_package/) كاملة إلى جذر الفلاش ميموري (Root):
+1. انسخ محتويات مجلد [`usb_package`](usb_package/) (أو فك ضغط ملف [`Gen5W_Arabic_USB_Package.zip`](releases/Gen5W_Arabic_USB_Package.zip)) كاملة إلى جذر الفلاش ميموري (Root):
    ```text
    USB Drive (Root)
    ├── NEMESIS.data
@@ -57,14 +82,14 @@
    - اختر **Arabic Profile (Safe Mode)** لتعريب البروفايل بأعلى درجات الأمان.
    - أو اختر **ME Map & Arabic** لتهيئة النظام لتشغيل خرائط الشرق الأوسط.
 5. اضغط **Install**.
-6. سيقوم النظام بحفظ نسخة احتياطية لسيارتك في مجلد `OEM_BACKUP` على الفلاش، وتطبيق التعديل، ثم إعادة تشغيل الشاشة تلقائياً.
+6. سيقوم النظام بحفظ نسخة احتياطية لسيارتك في مجلد `OEM_BACKUP` على الفلاش وداخل ذاكرة الشاشة، وتطبيق التعديل، ثم إعادة تشغيل الشاشة تلقائياً.
 7. بعد إعادة التشغيل، ادخل على:
    **الإعدادات (Settings) ⬅️ عام (General) ⬅️ اللغة (Language)**، واختر **العربية**.
 
 ---
 
 ### [EN] Installation Procedure:
-1. Copy all contents from [`usb_package`](usb_package/) directly to the USB drive root:
+1. Copy all contents from [`usb_package`](usb_package/) (or extract [`Gen5W_Arabic_USB_Package.zip`](releases/Gen5W_Arabic_USB_Package.zip)) directly to the USB drive root:
    ```text
    USB Drive (Root)
    ├── NEMESIS.data
@@ -78,7 +103,7 @@
    - Select **Arabic Profile (Safe Mode)** for safe UI localization.
    - Or select **ME Map & Arabic** to enable Middle East offline map support.
 5. Press **Install**.
-6. The system automatically creates a per-vehicle backup in `OEM_BACKUP` on your USB, applies the mod, and reboots automatically.
+6. The system automatically creates a per-vehicle backup in `OEM_BACKUP` on your USB and inside head unit storage, applies the mod, and reboots automatically.
 7. After reboot, navigate to:
    **Settings ➡️ General ➡️ Language**, and select **العربية (Arabic)**.
 
@@ -103,12 +128,12 @@
 ## 🆘 فلاشة الطوارئ الشاملة / Universal Emergency Recovery Stick
 
 ### [AR] الاسترجاع عند الطوارئ:
-1. انسخ محتويات مجلد [`usb_emergency_recovery`](usb_emergency_recovery/) إلى فلاش ميموري FAT32.
+1. انسخ محتويات مجلد [`usb_emergency_recovery`](usb_emergency_recovery/) (أو فك ضغط [`Gen5W_Emergency_Recovery_USB.zip`](releases/Gen5W_Emergency_Recovery_USB.zip)) إلى فلاش ميموري FAT32.
 2. أدخل الفلاش في السيارة.
 3. بفضل ملف `NEMESIS.emergency`، سيبحث سكربت الطوارئ تلقائياً عن نسخة المصنع الأصلية لسيارتك المحفوظة مسبقاً في مجلد `OEM_BACKUP` على الفلاش أو في ذاكرة السيارة الداخلية، ويسترجعها فوراً ويعيد تشغيل الشاشة تلقائياً.
 
 ### [EN] Emergency Restoration:
-1. Copy contents of [`usb_emergency_recovery`](usb_emergency_recovery/) onto a FAT32 USB drive.
+1. Copy contents of [`usb_emergency_recovery`](usb_emergency_recovery/) (or extract [`Gen5W_Emergency_Recovery_USB.zip`](releases/Gen5W_Emergency_Recovery_USB.zip)) onto a FAT32 USB drive.
 2. Insert the USB drive into the car.
 3. Triggered by `NEMESIS.emergency`, the recovery script dynamically discovers your vehicle's stock backup from `OEM_BACKUP` or internal storage, restores it, and restarts the system.
 
@@ -118,7 +143,12 @@
 
 ```text
 nemesis-arabic-package/
-├── usb_package/                      <-- [AR] جاهز للنسخ المباشر للفلاش ميموري
+├── releases/                         <-- [AR] ملفات التثبيت المضغوطة الجاهزة للتحميل
+│   │                                 <-- [EN] Ready-to-download pre-packaged archives
+│   ├── Gen5W_Arabic_USB_Package.zip  (Ready to extract to FAT32 USB root)
+│   └── Gen5W_Emergency_Recovery_USB.zip (Emergency recovery stick package)
+│
+├── usb_package/                      <-- [AR] مجلد التثبيت الجاهز للنسخ المباشر
 │   │                                 <-- [EN] Ready to copy directly to USB
 │   ├── NEMESIS.data                  (Package Store multi-installer)
 │   └── packages/

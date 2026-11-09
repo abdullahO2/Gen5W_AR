@@ -5,7 +5,7 @@ export PATH=/data/nemesis/bin:/sbin:/vendor/bin:/system/sbin:/system/bin:/system
 log "=== [AR] بدء تثبيت تهيئة خرائط الشرق الأوسط والتعريب ==="
 log "=== [EN] Installing arabic.full (ME Map Compatibility) ==="
 
-# 1. Dynamic OEM backup to USB (OEM_BACKUP folder) and internal storage
+# 1. Dual OEM backup: to USB (OEM_BACKUP folder) AND internal head unit storage
 if ! backup_vehicle_oem; then
     log "[AR] خطأ: فشل النسخ الاحتياطي! تم إلغاء العملية."
     log "[EN] ABORT: Per-vehicle OEM backup failed! System untouched."
