@@ -1,18 +1,26 @@
 #!/system/bin/sh
-# common.sh - Safe operations for arabic.locale package
+# common.sh - Helper functions for Gen5W NEMESIS package
 export PATH=/data/nemesis/bin:/sbin:/vendor/bin:/system/sbin:/system/bin:/system/xbin
 export LD_LIBRARY_PATH=/vendor/lib:/system/lib
 
+PKG_ID="arabic.full"
 BP="/system/build.prop"
-BACKUP_DIR="/data/nemesis/backup/arabic.locale"
+BACKUP_DIR="/data/nemesis/backup/$PKG_ID"
 GLOBAL_BACKUP="/data/nemesis/build.prop.stock"
-LOG="/data/nemesis/arabic.locale.log"
+LOG="/data/nemesis/$PKG_ID.log"
 
 log() {
     local _msg="$1"
     echo "$_msg"
     mkdir -p /data/nemesis 2>/dev/null || true
     echo "$_msg" >> "$LOG" 2>/dev/null || true
+}
+
+toast() {
+    local _msg="$1"
+    am broadcast -a com.hkmc.intent.action.TOAST \
+        -e com.hkmc.intent.extra.TOAST_MESSAGE "$_msg" \
+        --ez com.hkmc.intent.extra.TOAST_POPUPSHOWING true >/dev/null 2>&1 || true
 }
 
 putline() {
@@ -35,7 +43,7 @@ sys_ro() {
     mount -o ro,remount /system 2>/dev/null || true
 }
 
-# 100% Android 4.4 toolbox compatible verification (no wc/head dependency)
+# Android 4.4 toolbox compatible validation
 verify_prop_file() {
     local _f="$1"
     if [ ! -f "$_f" ] || [ ! -s "$_f" ]; then
@@ -71,6 +79,17 @@ commit_tmp() {
 }
 
 snapshot_all() {
+    # If a valid global stock backup already exists, preserve it permanently!
+    if [ -s "$GLOBAL_BACKUP" ] && verify_prop_file "$GLOBAL_BACKUP"; then
+        log "Original factory backup already verified at $GLOBAL_BACKUP (preserved)"
+        mkdir -p "$BACKUP_DIR" 2>/dev/null || true
+        if [ ! -s "$BACKUP_DIR/build.prop.stock" ]; then
+            cp -f "$GLOBAL_BACKUP" "$BACKUP_DIR/build.prop.stock" 2>/dev/null || true
+        fi
+        putline 1 > "$BACKUP_DIR/saved" 2>/dev/null || true
+        return 0
+    fi
+
     if [ -s "$BACKUP_DIR/saved" ]; then
         log "Stock backup already exists ($BACKUP_DIR) - keeping original intact"
         return 0
@@ -91,7 +110,7 @@ snapshot_all() {
         return 1
     fi
     
-    # Persistent global safety copy
+    # Save permanent global stock copy
     if [ ! -s "$GLOBAL_BACKUP" ]; then
         cp -f "$BP" "$GLOBAL_BACKUP" 2>/dev/null || true
     fi
@@ -170,10 +189,30 @@ restore_all() {
     
     # Clean runtime persist overrides
     rm -f /data/property/persist.sys.language_list 2>/dev/null || true
-    rm -f /data/property/persist.sys.timezone 2>/dev/null || true
     
     sync
     sys_ro
     log "Restored stock build.prop successfully"
     return 0
+}
+
+# Automatically rename NEMESIS.data on USB drives to prevent repeated prompts on boot
+rename_usb_data() {
+    local _src="$1"
+    local _dst="$2"
+    for _usb in /storage/usb* /mnt/media_rw/usb* /storage/usbotg*; do
+        if [ -d "$_usb" ] && [ -f "$_usb/$_src" ]; then
+            mv "$_usb/$_src" "$_usb/$_dst" 2>/dev/null && {
+                log "Renamed $_usb/$_src -> $_usb/$_dst"
+                sync
+            }
+        fi
+    done
+}
+
+reboot_system() {
+    log "Reboot triggered. Syncing disks and restarting..."
+    sync
+    sleep 2
+    /system/bin/reboot 2>/dev/null || reboot 2>/dev/null || true
 }

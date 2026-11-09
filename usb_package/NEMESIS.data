@@ -1,4 +1,9 @@
 [nemesis]
 version=1.0
-type=install
-path=packages/arabic.locale.zip
+type=list
+
+[package.0]
+path=packages/arabic.ui.zip
+
+[package.1]
+path=packages/arabic.full.zip

@@ -1,0 +1,18 @@
+[nemesis]
+version=1.1
+id=arabic.ui
+name="Arabic UI Language"
+type=application
+package-version=1.2
+short-desc="Safe Arabic UI (Profile only, zero mod conflicts)"
+detailed-desc="Safe Mode: Adds Arabic to profile language settings without changing system region. 100% safe for CarPlay/AA & other regional mods. Includes auto stock backup, auto reboot, and USB unlooping."
+os=any
+models=any
+preinstall=scripts/pre.sh
+postinstall=scripts/post.sh
+preuninstall=scripts/preun.sh
+
+[app.0]
+kind=sh
+path=bin/status.sh
+uid=root

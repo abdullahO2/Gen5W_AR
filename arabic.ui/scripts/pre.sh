@@ -1,6 +1,6 @@
 #!/system/bin/sh
 export PATH=/data/nemesis/bin:/sbin:/vendor/bin:/system/sbin:/system/bin:/system/xbin
-LOG="/data/nemesis/arabic.locale.log"
+LOG="/data/nemesis/arabic.ui.log"
 
 log() {
     echo "$1"
@@ -10,8 +10,9 @@ log() {
 
 log "=========================================================="
 log " DISCLAIMER / إخلاء مسؤولية "
-log " This package modifies system properties at user risk. "
+log " Installing Arabic UI Language (Safe Profile Mode). "
+log " This package modifies persist.sys.language_list only. "
+log " System region and navigation engine remain untouched. "
 log " Author holds no liability for device failure or damage. "
-log " Proceeding with installation of minimal Arabic & ME mod. "
 log "=========================================================="
 exit 0
