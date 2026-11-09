@@ -1,0 +1,18 @@
+[nemesis]
+version=1.1
+id=arabic.locale
+name="Arabic & ME Localization"
+type=application
+package-version=1.1
+short-desc="Arabic & ME Map Mod [Use at own risk]"
+detailed-desc="DISCLAIMER: Modifies build.prop at your own risk. The author holds no liability for device failure. Minimal patch: adds Arabic locale & sets ME map region (BuildInfo.REGION=6). Includes automatic stock backup and recovery."
+os=any
+models=any
+preinstall=scripts/pre.sh
+postinstall=scripts/post.sh
+preuninstall=scripts/preun.sh
+
+[app.0]
+kind=sh
+path=bin/status.sh
+uid=root
