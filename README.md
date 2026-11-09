@@ -29,12 +29,22 @@
 
 ---
 
-## 📦 حزم التحميل الجاهزة / Ready-to-Use Release Packages
+## 📦 حزم التحميل والرفع / Ready-to-Use Release Packages
 
-يمكنك تحميل الحزم الجاهزة للنسخ المباشر من مجلد [`releases/`](releases/):
-* 💾 **[`Gen5W_Arabic_USB_Package.zip`](releases/Gen5W_Arabic_USB_Package.zip)**:  
-  **[AR]** ملف مضغوط يحتوي على كافة ملفات التثبيت الجاهزة (`NEMESIS.data` و `packages/`). فقط فك الضغط مباشرة داخل الفلاش ميموري (FAT32).  
-  **[EN]** Pre-packaged zip containing ready-to-use installer files. Extract directly to the root of your FAT32 USB drive.
+يمكنك تحميل الحزم الجاهزة للنسخ أو الرفع من مجلد [`releases/`](releases/):
+
+### 🌐 للرفع على متجر NEMESIS الإلكتروني (NEMESIS Store Upload):
+* 🟢 **[`arabic.ui.zip`](releases/arabic.ui.zip)** (`id=arabic.ui`):  
+  **[AR]** الحزمة المستقلة لتعريب البروفايل الآمن (مخصصة للرفع على متجر NEMESIS الإلكتروني).  
+  **[EN]** Standalone package for Safe Driver Profile Mode (ready for upload to NEMESIS Package Store).
+* 🔵 **[`arabic.full.zip`](releases/arabic.full.zip)** (`id=arabic.full`):  
+  **[AR]** الحزمة المستقلة لتوافق خرائط الشرق الأوسط (مخصصة للرفع على متجر NEMESIS الإلكتروني).  
+  **[EN]** Standalone package for ME Map Compatibility Mode (ready for upload to NEMESIS Package Store).
+
+### 💾 للتثبيت دون إنترنت عبر الفلاش ميموري (Offline USB Installation):
+* 💾 **[`Gen5W_Arabic_USB_Package.zip`](releases/Gen5W_Arabic_USB_Package.zip)** (`type=list`):  
+  **[AR]** حزمة التثبيت الشاملة عبر الفلاش ميموري (تضم الخيارين معاً). فقط فك الضغط مباشرة داخل جذر الفلاش ميموري (FAT32).  
+  **[EN]** Multi-installer suite for USB drives (contains both modes). Extract directly to the root of your FAT32 USB drive.
 * 🆘 **[`Gen5W_Emergency_Recovery_USB.zip`](releases/Gen5W_Emergency_Recovery_USB.zip)**:  
   **[AR]** فلاشة الطوارئ الشاملة الجاهزة للفك المباشر.  
   **[EN]** Universal emergency recovery package ready to extract to a USB drive.
@@ -143,10 +153,12 @@
 
 ```text
 nemesis-arabic-package/
-├── releases/                         <-- [AR] ملفات التثبيت المضغوطة الجاهزة للتحميل
-│   │                                 <-- [EN] Ready-to-download pre-packaged archives
-│   ├── Gen5W_Arabic_USB_Package.zip  (Ready to extract to FAT32 USB root)
-│   └── Gen5W_Emergency_Recovery_USB.zip (Emergency recovery stick package)
+├── releases/                         <-- [AR] ملفات التثبيت المضغوطة الجاهزة للتحميل والرفع
+│   │                                 <-- [EN] Ready-to-download and store-upload packages
+│   ├── arabic.ui.zip                 (Standalone package for NEMESIS Store: id=arabic.ui)
+│   ├── arabic.full.zip               (Standalone package for NEMESIS Store: id=arabic.full)
+│   ├── Gen5W_Arabic_USB_Package.zip  (USB Multi-Installer: extract to FAT32 USB root)
+│   └── Gen5W_Emergency_Recovery_USB.zip (Universal emergency recovery stick)
 │
 ├── usb_package/                      <-- [AR] مجلد التثبيت الجاهز للنسخ المباشر
 │   │                                 <-- [EN] Ready to copy directly to USB

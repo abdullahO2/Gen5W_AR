@@ -68,12 +68,21 @@ def build_single_zip(src_dir: Path, output_zip: Path):
 def build_all_packages():
     pkgs_dir = USB_PKG_DIR / "packages"
     pkgs_dir.mkdir(parents=True, exist_ok=True)
+    RELEASES_DIR.mkdir(parents=True, exist_ok=True)
 
     print("\n--- Building Package 1: arabic.ui (Safe Profile Mode) ---")
-    build_single_zip(BASE_DIR / "arabic.ui", pkgs_dir / "arabic.ui.zip")
+    ui_zip = pkgs_dir / "arabic.ui.zip"
+    build_single_zip(BASE_DIR / "arabic.ui", ui_zip)
+    # Also copy standalone zip to releases/ for easy upload to NEMESIS Store
+    shutil.copy2(ui_zip, RELEASES_DIR / "arabic.ui.zip")
+    print(f"  -> Copied standalone to releases/arabic.ui.zip")
 
     print("\n--- Building Package 2: arabic.full (Full Region Mod) ---")
-    build_single_zip(BASE_DIR / "arabic.full", pkgs_dir / "arabic.full.zip")
+    full_zip = pkgs_dir / "arabic.full.zip"
+    build_single_zip(BASE_DIR / "arabic.full", full_zip)
+    # Also copy standalone zip to releases/ for easy upload to NEMESIS Store
+    shutil.copy2(full_zip, RELEASES_DIR / "arabic.full.zip")
+    print(f"  -> Copied standalone to releases/arabic.full.zip")
 
 
 def create_usb_installer_files():
